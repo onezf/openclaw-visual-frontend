@@ -1583,7 +1583,11 @@
   }
 
   function resize() {
-    if (game) {
+    if (!ensureScene()) {
+      return;
+    }
+
+    if (game?.scale && typeof game.scale.refresh === "function") {
       game.scale.refresh();
     }
   }

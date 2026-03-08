@@ -8,16 +8,18 @@ const ROBOT_DISPLAY_NAME = "小龙虾";
 const urlParams = new URLSearchParams(window.location.search);
 const externalConfig = window.OPENCLAW_CONFIG || {};
 const useMock = urlParams.get("mock") === "1";
+const useDemo = urlParams.get("demo") === "1";
 const endpointOverride = urlParams.get("endpoint");
 const wsOverride = urlParams.get("ws");
 const tasksEndpointOverride = urlParams.get("tasksEndpoint");
 const runtimeEndpointOverride = urlParams.get("runtimeEndpoint");
+const DEMO_STEP_DURATION_MS = Math.max(Number(urlParams.get("demoStepMs") || 5200), 2500);
 
 const CONFIG = {
   endpoint: endpointOverride || (useMock ? externalConfig.mockEndpoint || "./mock-status.json" : externalConfig.endpoint || "/api/openclaw/status"),
-  wsEndpoint: useMock ? "" : wsOverride || externalConfig.wsEndpoint || "",
-  taskStatsEndpoint: tasksEndpointOverride || externalConfig.taskStatsEndpoint || "",
-  taskRuntimeEndpoint: runtimeEndpointOverride || externalConfig.taskRuntimeEndpoint || "/api/tasks/runtime",
+  wsEndpoint: (useMock || useDemo) ? "" : wsOverride || externalConfig.wsEndpoint || "",
+  taskStatsEndpoint: useDemo ? "" : tasksEndpointOverride || externalConfig.taskStatsEndpoint || "",
+  taskRuntimeEndpoint: useDemo ? "" : runtimeEndpointOverride || externalConfig.taskRuntimeEndpoint || "/api/tasks/runtime",
   pollIntervalMs: Math.max(Number(urlParams.get("poll") || externalConfig.pollIntervalMs || 3000), 1500),
   requestTimeoutMs: Math.max(Number(urlParams.get("timeout") || externalConfig.requestTimeoutMs || 12000), 2000),
   wsReconnectDelayMs: Math.max(Number(urlParams.get("wsReconnect") || externalConfig.wsReconnectDelayMs || 3500), 1000),
@@ -143,6 +145,7 @@ let taskStatsRefreshPromise = null;
 let latestTaskRuntime = null;
 let lastTaskRuntimeSignature = "";
 let taskRuntimeRefreshPromise = null;
+let demoTimer = 0;
 let feedItems = [
   {
     zone: "system",
@@ -478,7 +481,7 @@ function normalizeTaskRuntimePayload(payload) {
 }
 
 async function fetchTaskStats() {
-  if (useMock) {
+  if (useMock || useDemo) {
     return null;
   }
 
@@ -519,7 +522,7 @@ async function fetchTaskStats() {
 }
 
 async function fetchTaskRuntime() {
-  if (useMock) {
+  if (useMock || useDemo) {
     return null;
   }
 
@@ -1184,6 +1187,7 @@ function mergeFeedEntries(primary, secondary) {
 function normalizeStatus(payload) {
   const root = payload.robot || payload.openclaw || payload.data || payload;
   const runtime = normalizeTaskRuntimePayload(firstDefined(root.runtime, payload.runtime)) || latestTaskRuntime;
+  const explicitZone = normalizeZone(firstDefined(root.zone, root.currentZone, root.area, payload.zone, payload.currentZone));
   const runtimeZone = runtime
     ? (runtime.queueSummary?.failed || 0) > 0
       ? "alarm"
@@ -1200,7 +1204,7 @@ function normalizeStatus(payload) {
           ? "rest"
           : ""
     : "";
-  const guessedZone = statsZone || runtimeZone || normalizeZone(firstDefined(root.zone, root.currentZone, root.area, payload.zone, payload.currentZone));
+  const guessedZone = explicitZone || statsZone || runtimeZone;
   const idleActivity = normalizeIdleActivity(firstDefined(
     root.idleActivity,
     root.activity,
@@ -2123,7 +2127,7 @@ function handleWsStatus(message) {
 }
 
 function connectWebSocket() {
-  if (!CONFIG.wsEndpoint || useMock) {
+  if (!CONFIG.wsEndpoint || useMock || useDemo) {
     return;
   }
 
@@ -2197,7 +2201,189 @@ function connectWebSocket() {
   });
 }
 
+function buildDemoPayloads() {
+  const now = Date.now();
+  const isoAt = (offsetMs) => new Date(now + offsetMs).toISOString();
+
+  return [
+    {
+      zone: "rest",
+      scene: "room",
+      idleActivity: "",
+      position: { x: 4, y: 6 },
+      task: "卧室休息",
+      description: `${ROBOT_DISPLAY_NAME} 正在休息区整理状态，准备出门巡场。`,
+      mode: "IDLE",
+      alertLevel: "GREEN",
+      load: 8,
+      battery: 98,
+      temperature: 31,
+      updatedAt: isoAt(0),
+      runtime: {
+        currentTask: null,
+        nextTask: null,
+        queueSummary: { queued: 0, running: 0, failed: 0 },
+      },
+      logs: [
+        { zone: "rest", time: isoAt(0), message: "休息区待命，准备出门巡场。" },
+      ],
+    },
+    {
+      zone: "rest",
+      scene: "outdoor",
+      idleActivity: "walk_dog",
+      position: { x: 5, y: 10 },
+      task: "室外遛弯",
+      description: `${ROBOT_DISPLAY_NAME} 已从休息区出门，正在门外放风。`,
+      mode: "IDLE",
+      alertLevel: "GREEN",
+      load: 12,
+      battery: 97,
+      temperature: 32,
+      updatedAt: isoAt(5000),
+      runtime: {
+        currentTask: null,
+        nextTask: {
+          taskId: "demo_task_work",
+          title: "去工作区整理文档",
+          status: "queued",
+          scheduledAt: isoAt(12000),
+        },
+        queueSummary: { queued: 1, running: 0, failed: 0 },
+      },
+      logs: [
+        { zone: "rest", time: isoAt(5000), message: "小龙虾从休息区门口出门，开始外出放风。" },
+      ],
+    },
+    {
+      zone: "work",
+      scene: "room",
+      idleActivity: "",
+      position: { x: 13, y: 7 },
+      task: "整理项目文档",
+      description: `${ROBOT_DISPLAY_NAME} 已进入工作区，正在工位处理文档整理任务。`,
+      mode: "RUNNING",
+      alertLevel: "BLUE",
+      load: 56,
+      battery: 95,
+      temperature: 37,
+      updatedAt: isoAt(10000),
+      runtime: {
+        currentTask: {
+          taskId: "demo_task_work",
+          title: "整理项目文档",
+          status: "running",
+          startedAt: isoAt(9000),
+          progress: 42,
+          etaSeconds: 160,
+        },
+        nextTask: {
+          taskId: "demo_task_alarm",
+          title: "检查警报控制台",
+          status: "queued",
+          scheduledAt: isoAt(18000),
+        },
+        queueSummary: { queued: 1, running: 1, failed: 0 },
+      },
+      logs: [
+        { zone: "work", time: isoAt(10000), message: "小龙虾到达工作区门口并进入工位。" },
+      ],
+    },
+    {
+      zone: "alarm",
+      scene: "room",
+      idleActivity: "",
+      position: { x: 20, y: 10 },
+      task: "检查警报控制台",
+      description: `${ROBOT_DISPLAY_NAME} 已进入警报区，正在核对控制台与告警灯状态。`,
+      mode: "RUNNING",
+      alertLevel: "AMBER",
+      load: 48,
+      battery: 93,
+      temperature: 39,
+      updatedAt: isoAt(15000),
+      runtime: {
+        currentTask: {
+          taskId: "demo_task_alarm",
+          title: "检查警报控制台",
+          status: "running",
+          startedAt: isoAt(14500),
+          progress: 78,
+          etaSeconds: 60,
+        },
+        nextTask: null,
+        queueSummary: { queued: 0, running: 1, failed: 0 },
+      },
+      logs: [
+        { zone: "alarm", time: isoAt(15000), message: "警报区亮灯，小龙虾已进入控制室检查。" },
+      ],
+    },
+    {
+      zone: "rest",
+      scene: "outdoor",
+      idleActivity: "supermarket",
+      position: { x: 13, y: 11 },
+      task: "逛超市补给",
+      description: `${ROBOT_DISPLAY_NAME} 当前没有新的运行任务，正在室外补给后返程。`,
+      mode: "IDLE",
+      alertLevel: "GREEN",
+      load: 10,
+      battery: 92,
+      temperature: 33,
+      updatedAt: isoAt(20000),
+      runtime: {
+        currentTask: null,
+        nextTask: null,
+        queueSummary: { queued: 0, running: 0, failed: 0 },
+      },
+      logs: [
+        { zone: "system", time: isoAt(20000), message: "演示模式：已完成跨区巡场，返回室外闲逛。" },
+      ],
+    },
+  ];
+}
+
+function stopDemoLoop() {
+  if (demoTimer) {
+    window.clearTimeout(demoTimer);
+    demoTimer = 0;
+  }
+}
+
+function startDemoLoop() {
+  stopDemoLoop();
+  const demoPayloads = buildDemoPayloads();
+  let demoIndex = 0;
+
+  const applyDemoStep = () => {
+    const payload = cloneJson(demoPayloads[demoIndex]);
+    commitOnlineState(payload, {
+      source: "demo",
+      stopFallbackPolling: true,
+      recoveryMessage: "",
+    });
+
+    demoIndex = (demoIndex + 1) % demoPayloads.length;
+    demoTimer = window.setTimeout(applyDemoStep, DEMO_STEP_DURATION_MS);
+  };
+
+  pushFeedItem({
+    zone: "system",
+    time: new Date().toISOString(),
+    message: "演示模式已启动，将自动展示休息区、室外、工作区和警报区的活动过程。",
+  });
+  applyDemoStep();
+}
+
 async function bootstrapSync() {
+  if (useDemo) {
+    connectionState = "online";
+    setConnectionBadge("online");
+    setInterfaceStatus("online");
+    startDemoLoop();
+    return;
+  }
+
   if (useMock || !CONFIG.wsEndpoint) {
     startPolling("当前未启用 WebSocket，使用 HTTP 轮询。");
     return;
