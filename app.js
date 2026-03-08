@@ -27,8 +27,13 @@ const CONFIG = {
   requestTimeoutMs: Math.max(Number(urlParams.get("timeout") || externalConfig.requestTimeoutMs || 12000), 2000),
   wsReconnectDelayMs: Math.max(Number(urlParams.get("wsReconnect") || externalConfig.wsReconnectDelayMs || 3500), 1000),
   headers: { ...(externalConfig.headers || {}) },
+  apiKey: externalConfig.apiKey || "",
   authToken: externalConfig.authToken || "",
 };
+
+if (CONFIG.apiKey && !CONFIG.headers["x-api-key"] && !CONFIG.headers["X-API-Key"]) {
+  CONFIG.headers["x-api-key"] = CONFIG.apiKey;
+}
 
 if (CONFIG.authToken && !CONFIG.headers.Authorization) {
   CONFIG.headers.Authorization = `Bearer ${CONFIG.authToken}`;
@@ -243,6 +248,10 @@ function buildWsUrl() {
 
   if (lastEventId) {
     url.searchParams.set("lastEventId", lastEventId);
+  }
+
+  if (CONFIG.apiKey && !url.searchParams.has("apiKey")) {
+    url.searchParams.set("apiKey", CONFIG.apiKey);
   }
 
   return url.toString();

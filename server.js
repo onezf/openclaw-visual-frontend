@@ -21,21 +21,32 @@ function readApiKeyFromDotenv(filePath) {
   }
 }
 
-function discoverOpenclawApiKey() {
+function pushUniqueValue(list, value) {
+  const normalized = String(value || "").trim();
+  if (!normalized || list.includes(normalized)) {
+    return;
+  }
+
+  list.push(normalized);
+}
+
+function discoverOpenclawApiKeys() {
   const homeDir = process.env.HOME || "";
+  const values = [];
+  pushUniqueValue(values, process.env.OPENCLAW_API_KEY);
+  pushUniqueValue(values, process.env.OPENCLAW_BACKEND_API_KEY);
+  pushUniqueValue(values, process.env.API_KEY);
   const candidates = [
-    path.join(__dirname, "..", "openclaw-visual-backend", ".env"),
     path.join(homeDir, ".openclaw", "workspace", "openclaw-visual-backend", ".env"),
+    path.join(__dirname, "..", "openclaw-visual-backend", ".env"),
   ];
 
   for (const candidate of candidates) {
     const value = readApiKeyFromDotenv(candidate);
-    if (value) {
-      return value;
-    }
+    pushUniqueValue(values, value);
   }
 
-  return "";
+  return values;
 }
 
 const STATUS_TIMEOUT_MS = Number(process.env.OPENCLAW_STATUS_TIMEOUT_MS || 12000);
@@ -48,7 +59,7 @@ const TASK_RUNTIME_URL = process.env.OPENCLAW_TASK_RUNTIME_URL || "";
 const TASK_STATS_TIMEOUT_MS = Number(process.env.OPENCLAW_TASK_STATS_TIMEOUT_MS || 5000);
 const TASK_RUNTIME_TIMEOUT_MS = Number(process.env.OPENCLAW_TASK_RUNTIME_TIMEOUT_MS || TASK_STATS_TIMEOUT_MS);
 const TASK_STATS_AUTH_TOKEN = process.env.OPENCLAW_TASK_STATS_AUTH_TOKEN || "";
-const OPENCLAW_API_KEY = process.env.OPENCLAW_API_KEY || process.env.OPENCLAW_BACKEND_API_KEY || discoverOpenclawApiKey();
+const OPENCLAW_API_KEYS = discoverOpenclawApiKeys();
 const OPENCLAW_AUTH_TOKEN = process.env.OPENCLAW_AUTH_TOKEN || TASK_STATS_AUTH_TOKEN || "";
 
 const WS_PATH = process.env.OPENCLAW_WS_PATH || "/ws/openclaw/status";
@@ -94,7 +105,7 @@ const streamState = {
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-API-Key");
   res.setHeader("Access-Control-Max-Age", "600");
   res.setHeader("Vary", "Origin");
 }
@@ -189,39 +200,54 @@ function getStatusEndpointCandidates() {
   ];
 }
 
-function buildUpstreamHeaders() {
-  return {
+function buildUpstreamHeaderVariants() {
+  const variants = [];
+  const authHeaders = OPENCLAW_AUTH_TOKEN ? { Authorization: `Bearer ${OPENCLAW_AUTH_TOKEN}` } : {};
+
+  for (const apiKey of OPENCLAW_API_KEYS) {
+    variants.push({
+      Accept: "application/json",
+      ...authHeaders,
+      "x-api-key": apiKey,
+    });
+  }
+
+  variants.push({
     Accept: "application/json",
-    ...(OPENCLAW_API_KEY ? { "x-api-key": OPENCLAW_API_KEY } : {}),
-    ...(OPENCLAW_AUTH_TOKEN ? { Authorization: `Bearer ${OPENCLAW_AUTH_TOKEN}` } : {}),
-  };
+    ...authHeaders,
+  });
+
+  return variants;
 }
 
 async function fetchJsonFromCandidates(candidates, timeoutMs) {
   let lastError = null;
+  const headerVariants = buildUpstreamHeaderVariants();
 
   for (const url of candidates) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    for (const headers of headerVariants) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        cache: "no-store",
-        headers: buildUpstreamHeaders(),
-        signal: controller.signal,
-      });
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+          headers,
+          signal: controller.signal,
+        });
 
-      if (!response.ok) {
-        lastError = new Error(`HTTP ${response.status} from ${url}`);
-        continue;
+        if (!response.ok) {
+          lastError = new Error(`HTTP ${response.status} from ${url}`);
+          continue;
+        }
+
+        return await response.json();
+      } catch (error) {
+        lastError = error;
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      return await response.json();
-    } catch (error) {
-      lastError = error;
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -234,35 +260,38 @@ async function fetchJsonFromCandidates(candidates, timeoutMs) {
 
 async function postJsonToCandidates(candidates, timeoutMs, body = {}) {
   let lastError = null;
+  const headerVariants = buildUpstreamHeaderVariants();
 
   for (const url of candidates) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    for (const headers of headerVariants) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        cache: "no-store",
-        headers: {
-          ...buildUpstreamHeaders(),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
 
-      const payload = await response.json().catch(() => ({}));
+        const payload = await response.json().catch(() => ({}));
 
-      if (!response.ok) {
-        lastError = new Error(payload?.error || payload?.message || `HTTP ${response.status} from ${url}`);
-        continue;
+        if (!response.ok) {
+          lastError = new Error(payload?.error || payload?.message || `HTTP ${response.status} from ${url}`);
+          continue;
+        }
+
+        return payload;
+      } catch (error) {
+        lastError = error;
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      return payload;
-    } catch (error) {
-      lastError = error;
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -951,37 +980,37 @@ function hasExplicitStatusFields(status) {
 
 async function fetchTaskStatsAsync() {
   const candidates = getTaskStatsCandidates();
+  const headerVariants = buildUpstreamHeaderVariants();
   for (const url of candidates) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TASK_STATS_TIMEOUT_MS);
+    for (const headers of headerVariants) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TASK_STATS_TIMEOUT_MS);
 
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        cache: "no-store",
-        headers: {
-          ...buildUpstreamHeaders(),
-          ...(TASK_STATS_AUTH_TOKEN ? { Authorization: `Bearer ${TASK_STATS_AUTH_TOKEN}` } : {}),
-        },
-        signal: controller.signal,
-      });
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+          headers,
+          signal: controller.signal,
+        });
 
-      if (!response.ok) {
-        continue;
+        if (!response.ok) {
+          continue;
+        }
+
+        const payload = await response.json();
+        const derived = deriveTaskStatsFromPayload(payload);
+        if (derived) {
+          return {
+            ...derived,
+            source: TASK_STATS_URL ? "task-stats-endpoint" : `task-stats-auto:${url}`,
+          };
+        }
+      } catch {
+        // ignore and try next candidate
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      const payload = await response.json();
-      const derived = deriveTaskStatsFromPayload(payload);
-      if (derived) {
-        return {
-          ...derived,
-          source: TASK_STATS_URL ? "task-stats-endpoint" : `task-stats-auto:${url}`,
-        };
-      }
-    } catch {
-      // ignore and try next candidate
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -990,37 +1019,37 @@ async function fetchTaskStatsAsync() {
 
 async function fetchTaskRuntimeAsync() {
   const candidates = getTaskRuntimeCandidates();
+  const headerVariants = buildUpstreamHeaderVariants();
   for (const url of candidates) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TASK_RUNTIME_TIMEOUT_MS);
+    for (const headers of headerVariants) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), TASK_RUNTIME_TIMEOUT_MS);
 
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        cache: "no-store",
-        headers: {
-          ...buildUpstreamHeaders(),
-          ...(TASK_STATS_AUTH_TOKEN ? { Authorization: `Bearer ${TASK_STATS_AUTH_TOKEN}` } : {}),
-        },
-        signal: controller.signal,
-      });
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          cache: "no-store",
+          headers,
+          signal: controller.signal,
+        });
 
-      if (!response.ok) {
-        continue;
+        if (!response.ok) {
+          continue;
+        }
+
+        const payload = await response.json();
+        const derived = deriveTaskRuntimeFromPayload(payload);
+        if (derived) {
+          return {
+            ...derived,
+            source: TASK_RUNTIME_URL ? "task-runtime-endpoint" : `task-runtime-auto:${url}`,
+          };
+        }
+      } catch {
+        // ignore and try next candidate
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      const payload = await response.json();
-      const derived = deriveTaskRuntimeFromPayload(payload);
-      if (derived) {
-        return {
-          ...derived,
-          source: TASK_RUNTIME_URL ? "task-runtime-endpoint" : `task-runtime-auto:${url}`,
-        };
-      }
-    } catch {
-      // ignore and try next candidate
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
