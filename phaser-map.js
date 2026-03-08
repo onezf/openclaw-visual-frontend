@@ -139,6 +139,14 @@
     return Math.min(Math.max(value, min), max);
   }
 
+  function sameTilePosition(left, right) {
+    if (!left || !right) {
+      return false;
+    }
+
+    return Math.abs(left.x - right.x) < 0.01 && Math.abs(left.y - right.y) < 0.01;
+  }
+
   function projectIntoBounds(position, bounds, width, height) {
     if (!position || !bounds) {
       return position;
@@ -825,21 +833,52 @@
       this.buildTownView(zone);
       this.updateViewState(zone, state?.alertLevel || "OFFLINE");
 
+      await this.runOutdoorPatrolLoop(state, sequenceId, {
+        startPoint: this.resolveOutdoorPosition(state) || this.getOutdoorRoute(state)[0] || this.getTownDoorWalkTarget(zone),
+      });
+    }
+
+    async runOutdoorPatrolLoop(state, sequenceId, options = {}) {
+      const zone = state?.zone || "rest";
       const route = this.getOutdoorRoute(state);
-      const startPoint = this.resolveOutdoorPosition(state) || route[0];
+      const fallbackRoutePoint = this.resolveOutdoorPosition(state) || route[0] || this.getTownDoorWalkTarget(zone);
+      const startPoint = options.startPoint || fallbackRoutePoint;
+
       if (!startPoint) {
         this.clearRobot();
         return;
       }
 
       this.showTransitionBanner(zone, this.getOutdoorBanner(state));
-      this.teleportRobot(startPoint, state.alertLevel, zone, true);
+      if (options.teleport === false) {
+        const moved = await this.moveRobotTo(startPoint, state.alertLevel, zone, OUTDOOR_PATROL_STEP_MS, true);
+        if (!moved || this.sequenceId !== sequenceId) {
+          return;
+        }
+      } else {
+        this.teleportRobot(startPoint, state.alertLevel, zone, true);
+      }
+
+      const routeStartPoint = options.routeStartPoint || fallbackRoutePoint;
+      if (routeStartPoint && !sameTilePosition(startPoint, routeStartPoint)) {
+        const movedToRoute = await this.moveRobotTo(routeStartPoint, state.alertLevel, zone, OUTDOOR_PATROL_STEP_MS, true);
+        if (!movedToRoute || this.sequenceId !== sequenceId) {
+          return;
+        }
+      }
 
       if (route.length === 0) {
         return;
       }
 
       let cursor = 0;
+      if (routeStartPoint) {
+        const matchedIndex = route.findIndex((point) => sameTilePosition(point, routeStartPoint));
+        if (matchedIndex >= 0) {
+          cursor = (matchedIndex + 1) % route.length;
+        }
+      }
+
       while (this.sequenceId === sequenceId) {
         const latestState = pendingState;
         if (!latestState || !this.isOutdoorState(latestState) || latestState.zone !== zone) {
@@ -860,6 +899,60 @@
 
         this.showTransitionBanner(zone, this.getOutdoorBanner(pendingState || latestState));
       }
+    }
+
+    async startOutdoorExit(state) {
+      const targetZone = state?.zone || this.currentZone || "rest";
+      const exitZone = this.currentZone || targetZone;
+
+      if (!this.currentView.endsWith("-room")) {
+        this.startOutdoorPatrol(state);
+        return;
+      }
+
+      this.clearPreviewTimer();
+      const sequenceId = this.sequenceId;
+      this.previewZone = targetZone;
+      this.previewKey = this.getPreviewKey(state);
+      this.transitioningRoomZone = exitZone;
+      this.updateViewState(exitZone, state?.alertLevel || "OFFLINE");
+      this.showTransitionBanner(exitZone, `离开${ROOM_THEMES[exitZone]?.title || exitZone}`);
+
+      const roomDoor = this.getRoomEntryTile(exitZone);
+      const reachedDoor = await this.moveRobotTo(roomDoor, state.alertLevel, exitZone, 420, false);
+      if (!reachedDoor || this.sequenceId !== sequenceId) {
+        return;
+      }
+
+      if (!(await this.waitForStep(INDOOR_SETTLE_MS, sequenceId)) || this.sequenceId !== sequenceId) {
+        return;
+      }
+
+      this.showTransitionBanner(exitZone, `推门离开${ROOM_THEMES[exitZone]?.title || exitZone}`);
+      this.buildTownView(targetZone);
+      this.updateViewState(targetZone, state?.alertLevel || "OFFLINE");
+      this.transitioningRoomZone = "";
+
+      const outdoorDoorPoint = this.getTownDoorWalkTarget(exitZone);
+      this.teleportRobot(outdoorDoorPoint, state.alertLevel, targetZone, true);
+
+      if (!(await this.waitForStep(INDOOR_SETTLE_MS, sequenceId)) || this.sequenceId !== sequenceId) {
+        return;
+      }
+
+      const latestState = pendingState;
+      if (!latestState || !this.isOutdoorState(latestState)) {
+        if (latestState?.zone) {
+          this.startZonePreview(latestState);
+        }
+        return;
+      }
+
+      const routeStartPoint = this.resolveOutdoorPosition(latestState) || this.getOutdoorRoute(latestState)[0] || outdoorDoorPoint;
+      await this.runOutdoorPatrolLoop(latestState, sequenceId, {
+        startPoint: outdoorDoorPoint,
+        routeStartPoint,
+      });
     }
 
     async startZonePreview(state) {
@@ -1291,6 +1384,19 @@
 
       if (this.isOutdoorState(state)) {
         const sameOutdoorPreview = this.currentView === "town" && this.previewKey === this.getPreviewKey(state);
+        const sameOutdoorExit = this.currentView.endsWith("-room")
+          && !!this.transitioningRoomZone
+          && this.previewKey === this.getPreviewKey(state);
+
+        if (sameOutdoorExit) {
+          this.updateViewState(this.currentZone || state.zone, state.alertLevel || "OFFLINE");
+          return;
+        }
+
+        if (this.currentView.endsWith("-room") && !this.transitioningRoomZone) {
+          this.startOutdoorExit(state);
+          return;
+        }
 
         if (this.transitioningRoomZone || !sameOutdoorPreview) {
           this.startOutdoorPatrol(state);
