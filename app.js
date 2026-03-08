@@ -1245,6 +1245,7 @@ function normalizeStatus(payload) {
   const fallbackTask = scene === "outdoor" ? (idleActivityLabel || "外出放风") : "状态同步中";
   const runtimeTaskTitle = runtime?.currentTask?.title || "";
   const statsTaskTitle = latestTaskStats?.currentTask?.title || "";
+  const explicitTask = firstDefined(root.task, root.taskName, root.action, root.job, payload.task, "");
   const runtimeFallbackTask = runtime
     ? runtime.currentTask?.title
       ? runtime.currentTask.title
@@ -1257,22 +1258,23 @@ function normalizeStatus(payload) {
       ? "警报处理中"
       : latestTaskStats.doing > 0
         ? (statsTaskTitle || `进行中任务 ${latestTaskStats.doing} 项`)
-        : latestTaskStats.total === 0
+      : latestTaskStats.total === 0
           ? "外出放风"
           : "等待任务安排"
     : "";
-  const rawTask = translateIncomingText(firstDefined(runtimeFallbackTask, statsFallbackTask, runtimeTaskTitle, root.task, root.taskName, root.action, root.job, payload.task, fallbackTask));
+  const rawTask = translateIncomingText(firstDefined(runtimeFallbackTask, explicitTask, statsFallbackTask, runtimeTaskTitle, fallbackTask));
   const task = scene === "outdoor" && looksLikeEmptyTask(rawTask) ? fallbackTask : rawTask;
   const fallbackDescription = scene === "outdoor"
     ? `${ROBOT_DISPLAY_NAME} 当前暂无任务，${formatIdleActivitySentence(idleActivityLabel)}。`
     : `${ROBOT_DISPLAY_NAME} 已同步到像素地图。`;
   const runtimeDescription = buildRuntimeSummary(runtime);
+  const explicitDescription = firstDefined(root.description, root.statusText, root.message, payload.description, "");
   const statsDescription = latestTaskStats
     ? latestTaskStats.total === 0
       ? `${ROBOT_DISPLAY_NAME} 当前没有任务，正在室外闲逛放风。`
       : `任务总数 ${latestTaskStats.total} 项 · 进行中 ${latestTaskStats.doing} 项${latestTaskStats.blocked > 0 ? ` · 阻塞 ${latestTaskStats.blocked} 项` : ""}`
     : "";
-  const description = translateIncomingText(firstDefined(runtimeDescription, statsDescription, root.description, root.statusText, root.message, payload.description, fallbackDescription));
+  const description = translateIncomingText(firstDefined(runtimeDescription, explicitDescription, statsDescription, fallbackDescription));
 
   return {
     zone,
