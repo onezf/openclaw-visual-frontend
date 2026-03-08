@@ -2,6 +2,10 @@
 
 一个基于 `Phaser + 原生 HTML/CSS/JS + Node.js` 的 OpenClaw 像素监控页。
 
+配套后端仓库：
+
+- [onezf/openclaw-visual-backend](https://github.com/onezf/openclaw-visual-backend)
+
 页面会根据后端返回的 `zone / scene / task / alertLevel / position` 实时切换场景：
 
 - `work`：进入工作区办公室
@@ -19,6 +23,39 @@
 - 任务运行摘要
 
 ![页面预览](./docs/preview.png)
+
+## 对接 `openclaw-visual-backend`
+
+如果你使用的是 [onezf/openclaw-visual-backend](https://github.com/onezf/openclaw-visual-backend) 这套后端，当前前端建议按下面方式接入：
+
+- 后端默认地址：`http://127.0.0.1:8787`
+- 后端鉴权方式：请求头 `x-api-key`
+- 当前后端仓库已提供：`GET /api/openclaw/status`
+- 当前后端仓库 README 里公开的是 REST 接口，不是 WebSocket 实时接口
+- 当前后端仓库 README 里还没有 `GET /api/tasks/stats` 和 `GET /api/tasks/runtime`
+
+因此建议把前端配置成“直连状态接口 + HTTP 轮询”模式：
+
+```js
+window.OPENCLAW_CONFIG = {
+  endpoint: "http://127.0.0.1:8787/api/openclaw/status",
+  wsEndpoint: "",
+  taskStatsEndpoint: "",
+  taskRuntimeEndpoint: "",
+  pollIntervalMs: 3000,
+  requestTimeoutMs: 12000,
+  headers: {
+    "x-api-key": "你的后端 API_KEY",
+  },
+};
+```
+
+说明：
+
+- `wsEndpoint` 置空后，页面会自动回退到 HTTP 轮询
+- `taskStatsEndpoint` 和 `taskRuntimeEndpoint` 先置空，避免前端去请求后端当前还没公开的路由
+- 如果你后续在后端补了任务统计或运行态接口，再把这两个地址补回去即可
+- 如果后端开启了严格 `CORS_ORIGIN`，记得把前端地址加入白名单
 
 ## 技术栈
 
