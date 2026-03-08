@@ -620,12 +620,39 @@ function mapZone(status, alertLevel, taskStats, taskRuntime) {
   return "rest";
 }
 
-function zonePosition(zone) {
+function resolveRestIdleRoutine(taskRuntime, now = new Date()) {
+  const running = toFiniteNumber(taskRuntime?.queueSummary?.running);
+  const failed = toFiniteNumber(taskRuntime?.queueSummary?.failed);
+  const queued = toFiniteNumber(taskRuntime?.queueSummary?.queued);
+
+  if ((running || 0) > 0 || (failed || 0) > 0 || taskRuntime?.currentTask?.title) {
+    return { scene: "room", idleActivity: "" };
+  }
+
+  if ((queued || 0) > 0) {
+    return { scene: "room", idleActivity: "stay_home" };
+  }
+
+  const slot = now.getMinutes() % 20;
+  if (slot < 12) {
+    return { scene: "room", idleActivity: "stay_home" };
+  }
+
+  return { scene: "outdoor", idleActivity: "walk_dog" };
+}
+
+function zonePosition(zone, scene = "room", idleActivity = "") {
   if (zone === "work") {
     return { x: 17, y: 7 };
   }
   if (zone === "alarm") {
     return { x: 18, y: 13 };
+  }
+  if (scene === "outdoor") {
+    if (idleActivity === "walk_dog") {
+      return { x: 5, y: 11 };
+    }
+    return { x: 6, y: 10 };
   }
   return { x: 4, y: 6 };
 }
@@ -727,13 +754,7 @@ function resolveScene(taskStats, taskRuntime, zone) {
     return "room";
   }
 
-  const running = toFiniteNumber(taskRuntime?.queueSummary?.running);
-  const failed = toFiniteNumber(taskRuntime?.queueSummary?.failed);
-  if ((running || 0) > 0 || (failed || 0) > 0 || taskRuntime?.currentTask?.title) {
-    return "room";
-  }
-
-  return "outdoor";
+  return resolveRestIdleRoutine(taskRuntime).scene;
 }
 
 function resolveIdleActivity(taskStats, taskRuntime, scene) {
@@ -741,12 +762,7 @@ function resolveIdleActivity(taskStats, taskRuntime, scene) {
     return "";
   }
 
-  const queued = toFiniteNumber(taskRuntime?.queueSummary?.queued);
-  if ((queued || 0) > 0) {
-    return "stroll";
-  }
-
-  return "walk_dog";
+  return resolveRestIdleRoutine(taskRuntime).idleActivity;
 }
 
 function idleActivityTaskLabel(idleActivity) {
@@ -850,11 +866,14 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
   };
   const resolvedTaskRuntime = taskRuntime || synthesizeTaskRuntimeFromTaskStats(resolvedTaskStats);
   const zone = mapZone(status, alertLevel, resolvedTaskStats, resolvedTaskRuntime);
-  const scene = resolveScene(resolvedTaskStats, resolvedTaskRuntime, zone);
-  const idleActivity = resolveIdleActivity(resolvedTaskStats, resolvedTaskRuntime, scene);
-  const position = zonePosition(zone);
   const recent = status?.sessions?.recent?.[0] || null;
   const now = new Date().toISOString();
+  const idleRoutine = zone === "rest"
+    ? resolveRestIdleRoutine(resolvedTaskRuntime, new Date(now))
+    : { scene: "room", idleActivity: "" };
+  const scene = zone === "rest" ? idleRoutine.scene : "room";
+  const idleActivity = scene === "outdoor" ? idleRoutine.idleActivity : "";
+  const position = zonePosition(zone, scene, idleActivity);
   const reachable = Boolean(status?.gateway?.reachable);
   const queued = Array.isArray(status?.queuedSystemEvents) ? status.queuedSystemEvents.length : 0;
   const currentTask = resolvedTaskRuntime?.currentTask || resolvedTaskStats?.currentTask || null;
@@ -887,6 +906,8 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
       task = currentTask.title;
     } else if (scene === "outdoor") {
       task = idleActivityTaskLabel(idleActivity);
+    } else if (zone === "rest") {
+      task = (queuedCount || 0) > 0 ? (nextTask?.title || "等待任务安排") : "休息中";
     } else if ((failedCount || blockedCount || 0) > 0) {
       task = "警报处理中";
     } else if ((runningCount || doingCount || 0) > 0) {
@@ -905,6 +926,8 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
       ? runtimeSummary || taskSummary || `Gateway online · sessions=${status?.sessions?.count || 0} · node=${status?.nodeService?.runtimeShort || "unknown"}`
       : scene === "outdoor"
         ? `${ROBOT_NAME}当前没有运行任务，正在室外活动。`
+        : zone === "rest"
+          ? `${ROBOT_NAME}当前没有运行任务，正在休息区待命。`
         : runtimeSummary || taskSummary || `Gateway online · sessions=${status?.sessions?.count || 0} · node=${status?.nodeService?.runtimeShort || "unknown"}`
     : "Gateway offline. Check token / service / CORS settings.";
 
