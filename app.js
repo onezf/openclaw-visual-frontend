@@ -623,25 +623,43 @@ async function refreshTaskRuntime(forceRender = false) {
   }
 }
 
+function countRunningTasks(list) {
+  if (!Array.isArray(list)) {
+    return null;
+  }
+
+  return list.filter((item) => {
+    const status = String(item?.status || "").trim().toLowerCase();
+    return status === "doing" || status === "running" || status === "in_progress";
+  }).length;
+}
+
 function resolveTaskCount(root, payload) {
-  const rootTasks = Array.isArray(root.tasks) ? root.tasks.length : null;
-  const payloadTasks = Array.isArray(payload.tasks) ? payload.tasks.length : null;
+  const rootTaskCount = root.taskCount && typeof root.taskCount === "object" ? root.taskCount : null;
+  const payloadTaskCount = payload.taskCount && typeof payload.taskCount === "object" ? payload.taskCount : null;
 
   return firstDefined(
-    latestTaskStats?.total,
-    root.taskCount,
-    root.totalTasks,
-    root.taskTotal,
-    root.metrics?.taskCount,
-    rootTasks,
-    payload.taskCount,
-    payload.totalTasks,
-    payload.taskTotal,
-    payloadTasks,
-    root.queue,
-    root.queueLength,
-    root.metrics?.queue,
-    payload.queue,
+    latestTaskRuntime?.queueSummary?.running,
+    latestTaskStats?.doing,
+    root.runtime?.queueSummary?.running,
+    payload.runtime?.queueSummary?.running,
+    rootTaskCount?.running,
+    rootTaskCount?.doing,
+    rootTaskCount?.inProgress,
+    payloadTaskCount?.running,
+    payloadTaskCount?.doing,
+    payloadTaskCount?.inProgress,
+    root.running,
+    root.runningCount,
+    root.doing,
+    root.inProgress,
+    root.metrics?.running,
+    payload.running,
+    payload.runningCount,
+    payload.doing,
+    payload.inProgress,
+    countRunningTasks(root.tasks),
+    countRunningTasks(payload.tasks),
   );
 }
 
