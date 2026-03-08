@@ -85,13 +85,13 @@
 
   const OUTDOOR_ACTIVITY_ROUTES = {
     stay_home: [{ x: 6, y: 15 }, { x: 8, y: 15 }, { x: 8, y: 17 }, { x: 6, y: 17 }],
-    walk: [{ x: 6, y: 15 }, { x: 10, y: 15 }, { x: 14, y: 17 }, { x: 10, y: 19 }, { x: 7, y: 18 }],
-    stroll: [{ x: 7, y: 15 }, { x: 11, y: 16 }, { x: 15, y: 15 }, { x: 13, y: 12 }, { x: 9, y: 12 }],
-    walk_dog: [{ x: 6, y: 15 }, { x: 8, y: 18 }, { x: 11, y: 20 }, { x: 8, y: 23 }, { x: 5, y: 21 }, { x: 5, y: 17 }],
-    supermarket: [{ x: 7, y: 15 }, { x: 11, y: 16 }, { x: 16, y: 16 }, { x: 21, y: 17 }, { x: 24, y: 16 }, { x: 21, y: 14 }, { x: 16, y: 14 }],
-    town: [{ x: 6, y: 15 }, { x: 11, y: 16 }, { x: 17, y: 16 }, { x: 22, y: 16 }, { x: 25, y: 19 }, { x: 18, y: 21 }, { x: 10, y: 20 }, { x: 6, y: 18 }],
-    park: [{ x: 6, y: 15 }, { x: 9, y: 18 }, { x: 12, y: 20 }, { x: 10, y: 23 }, { x: 7, y: 22 }, { x: 6, y: 18 }],
-    coffee: [{ x: 7, y: 15 }, { x: 11, y: 15 }, { x: 15, y: 14 }, { x: 18, y: 13 }, { x: 16, y: 15 }, { x: 11, y: 16 }],
+    walk: [{ x: 6, y: 15 }, { x: 10, y: 15 }, { x: 14, y: 15 }, { x: 18, y: 17 }, { x: 14, y: 19 }, { x: 9, y: 19 }, { x: 6, y: 17 }],
+    stroll: [{ x: 7, y: 15 }, { x: 11, y: 15 }, { x: 16, y: 15 }, { x: 20, y: 17 }, { x: 16, y: 19 }, { x: 10, y: 19 }, { x: 7, y: 17 }],
+    walk_dog: [{ x: 6, y: 15 }, { x: 8, y: 17 }, { x: 11, y: 19 }, { x: 9, y: 21 }, { x: 6, y: 20 }, { x: 5, y: 17 }],
+    supermarket: [{ x: 7, y: 15 }, { x: 12, y: 15 }, { x: 18, y: 15 }, { x: 22, y: 15 }, { x: 24, y: 17 }, { x: 21, y: 19 }, { x: 16, y: 19 }, { x: 11, y: 17 }],
+    town: [{ x: 6, y: 15 }, { x: 11, y: 15 }, { x: 17, y: 15 }, { x: 23, y: 15 }, { x: 25, y: 18 }, { x: 20, y: 20 }, { x: 13, y: 20 }, { x: 7, y: 18 }],
+    park: [{ x: 6, y: 15 }, { x: 9, y: 17 }, { x: 12, y: 19 }, { x: 10, y: 21 }, { x: 7, y: 20 }, { x: 6, y: 18 }],
+    coffee: [{ x: 7, y: 15 }, { x: 11, y: 15 }, { x: 15, y: 15 }, { x: 19, y: 15 }, { x: 17, y: 17 }, { x: 12, y: 17 }],
   };
 
   const TOWN_ZONE_DOORS = {
@@ -638,6 +638,17 @@
       return door.anchor || door.walkTo || door;
     }
 
+    getCurrentTownTilePosition() {
+      if (this.currentView !== "town" || !this.player?.visible) {
+        return null;
+      }
+
+      return {
+        x: clamp(Math.round((this.player.x / TILE_SIZE) - 0.5), 0, TOWN_TILES - 1),
+        y: clamp(Math.round((this.player.y / TILE_SIZE) - 1), 0, TOWN_TILES - 1),
+      };
+    }
+
     getRoomEntryTile(zone) {
       return ROOM_ENTRY_TILES[zone] || ROOM_ENTRY_TILES.work;
     }
@@ -971,19 +982,26 @@
       this.previewZone = zone;
       this.previewKey = this.getPreviewKey(state);
       this.transitioningRoomZone = zone;
+      const currentTownPoint = this.getCurrentTownTilePosition();
       this.buildTownView(zone);
       this.updateViewState(zone, state.alertLevel || "OFFLINE");
 
       const route = this.getTownPatrolRoute(zone);
+      const startPoint = currentTownPoint || route[0];
       if (route.length === 0) {
         this.clearRobot();
         return;
       }
 
       this.showTransitionBanner(zone, `室外总览 · 前往${ROOM_THEMES[zone]?.title || zone}`);
-      this.teleportRobot(route[0], state.alertLevel, zone, true);
+      this.teleportRobot(startPoint, state.alertLevel, zone, true);
 
-      for (let index = 1; index < route.length; index += 1) {
+      const routeStartIndex = route.findIndex((point) => sameTilePosition(point, startPoint));
+      if (routeStartIndex === -1 && route[0] && !sameTilePosition(route[0], startPoint)) {
+        await this.moveRobotTo(route[0], state.alertLevel, zone, OUTDOOR_PATROL_STEP_MS, true);
+      }
+
+      for (let index = Math.max(routeStartIndex + 1, 1); index < route.length; index += 1) {
         if (this.sequenceId !== sequenceId) {
           return;
         }
@@ -1016,6 +1034,78 @@
       if (this.isOutdoorState(latestState)) {
         this.transitioningRoomZone = "";
         this.startOutdoorPatrol(latestState);
+        return;
+      }
+
+      this.enterRoom(latestState, sequenceId);
+    }
+
+    async startZoneTransfer(state) {
+      const targetZone = state?.zone;
+      const sourceZone = this.currentZone || targetZone;
+      if (!targetZone || !sourceZone || sourceZone === targetZone || !this.currentView.endsWith("-room")) {
+        this.startZonePreview(state);
+        return;
+      }
+
+      this.clearPreviewTimer();
+      const sequenceId = this.sequenceId;
+      this.previewZone = targetZone;
+      this.previewKey = this.getPreviewKey(state);
+      this.transitioningRoomZone = targetZone;
+      this.updateViewState(sourceZone, state.alertLevel || "OFFLINE");
+      this.showTransitionBanner(sourceZone, `离开${ROOM_THEMES[sourceZone]?.title || sourceZone}`);
+
+      const sourceRoomDoor = this.getRoomEntryTile(sourceZone);
+      const reachedDoor = await this.moveRobotTo(sourceRoomDoor, state.alertLevel, sourceZone, 420, false);
+      if (!reachedDoor || this.sequenceId !== sequenceId) {
+        return;
+      }
+
+      if (!(await this.waitForStep(INDOOR_SETTLE_MS, sequenceId)) || this.sequenceId !== sequenceId) {
+        return;
+      }
+
+      this.buildTownView(targetZone);
+      this.updateViewState(targetZone, state.alertLevel || "OFFLINE");
+      const sourceOutdoorDoor = this.getTownDoorWalkTarget(sourceZone);
+      this.teleportRobot(sourceOutdoorDoor, state.alertLevel, targetZone, true);
+
+      if (!(await this.waitForStep(INDOOR_SETTLE_MS, sequenceId)) || this.sequenceId !== sequenceId) {
+        return;
+      }
+
+      this.showTransitionBanner(targetZone, `前往${ROOM_THEMES[targetZone]?.title || targetZone}`);
+      const targetOutdoorDoor = this.getTownDoorWalkTarget(targetZone);
+      if (!sameTilePosition(sourceOutdoorDoor, targetOutdoorDoor)) {
+        const moved = await this.moveRobotTo(targetOutdoorDoor, state.alertLevel, targetZone, OUTDOOR_PATROL_STEP_MS * 2, true);
+        if (!moved || this.sequenceId !== sequenceId) {
+          return;
+        }
+      }
+
+      this.showTransitionBanner(targetZone, `开门进入${ROOM_THEMES[targetZone]?.title || targetZone}`);
+      const doorOpened = await this.animateDoorOpen(targetZone, sequenceId);
+      if (!doorOpened || this.sequenceId !== sequenceId) {
+        return;
+      }
+
+      const latestState = pendingState;
+      if (!latestState) {
+        this.transitioningRoomZone = "";
+        this.hideTransitionBanner();
+        return;
+      }
+
+      if (this.isOutdoorState(latestState)) {
+        this.transitioningRoomZone = "";
+        this.startOutdoorPatrol(latestState);
+        return;
+      }
+
+      if (latestState.zone !== targetZone) {
+        this.transitioningRoomZone = "";
+        this.startZonePreview(latestState);
         return;
       }
 
@@ -1413,6 +1503,11 @@
       if (this.transitioningRoomZone && this.transitioningRoomZone !== state.zone) {
         this.clearPreviewTimer();
         this.startZonePreview(state);
+        return;
+      }
+
+      if (this.currentView.endsWith("-room") && this.currentZone && this.currentZone !== state.zone && !this.transitioningRoomZone) {
+        this.startZoneTransfer(state);
         return;
       }
 
