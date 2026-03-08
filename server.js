@@ -722,30 +722,45 @@ function buildRuntimeSummary(taskRuntime) {
   return parts.join(" ｜ ");
 }
 
-function resolveScene(taskStats, zone) {
+function resolveScene(taskStats, taskRuntime, zone) {
   if (zone !== "rest") {
     return "room";
   }
 
-  const total = toFiniteNumber(taskStats?.totalTasks ?? taskStats?.taskCount);
-  if ((total ?? 0) <= 0) {
-    return "outdoor";
+  const running = toFiniteNumber(taskRuntime?.queueSummary?.running);
+  const failed = toFiniteNumber(taskRuntime?.queueSummary?.failed);
+  if ((running || 0) > 0 || (failed || 0) > 0 || taskRuntime?.currentTask?.title) {
+    return "room";
   }
 
-  return "room";
+  return "outdoor";
 }
 
-function resolveIdleActivity(taskStats, scene) {
+function resolveIdleActivity(taskStats, taskRuntime, scene) {
   if (scene !== "outdoor") {
     return "";
   }
 
-  const total = toFiniteNumber(taskStats?.totalTasks ?? taskStats?.taskCount);
-  if ((total ?? 0) <= 0) {
+  const queued = toFiniteNumber(taskRuntime?.queueSummary?.queued);
+  if ((queued || 0) > 0) {
     return "stroll";
   }
 
-  return "walk";
+  return "walk_dog";
+}
+
+function idleActivityTaskLabel(idleActivity) {
+  const labels = {
+    walk_dog: "遛狗中",
+    stroll: "外出遛弯",
+    walk: "外出散步",
+    supermarket: "逛超市",
+    town: "城里闲逛",
+    park: "公园散步",
+    coffee: "喝咖啡",
+  };
+
+  return labels[idleActivity] || "外出放风";
 }
 
 async function fetchTaskStatsAsync() {
@@ -835,8 +850,8 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
   };
   const resolvedTaskRuntime = taskRuntime || synthesizeTaskRuntimeFromTaskStats(resolvedTaskStats);
   const zone = mapZone(status, alertLevel, resolvedTaskStats, resolvedTaskRuntime);
-  const scene = resolveScene(resolvedTaskStats, zone);
-  const idleActivity = resolveIdleActivity(resolvedTaskStats, scene);
+  const scene = resolveScene(resolvedTaskStats, resolvedTaskRuntime, zone);
+  const idleActivity = resolveIdleActivity(resolvedTaskStats, resolvedTaskRuntime, scene);
   const position = zonePosition(zone);
   const recent = status?.sessions?.recent?.[0] || null;
   const now = new Date().toISOString();
@@ -871,7 +886,7 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
     if (currentTask?.title) {
       task = currentTask.title;
     } else if (scene === "outdoor") {
-      task = "外出放风";
+      task = idleActivityTaskLabel(idleActivity);
     } else if ((failedCount || blockedCount || 0) > 0) {
       task = "警报处理中";
     } else if ((runningCount || doingCount || 0) > 0) {
@@ -889,7 +904,7 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
     ? currentTask?.title
       ? runtimeSummary || taskSummary || `Gateway online · sessions=${status?.sessions?.count || 0} · node=${status?.nodeService?.runtimeShort || "unknown"}`
       : scene === "outdoor"
-        ? `${ROBOT_NAME}当前没有任务，正在室外闲逛放风。`
+        ? `${ROBOT_NAME}当前没有运行任务，正在室外活动。`
         : runtimeSummary || taskSummary || `Gateway online · sessions=${status?.sessions?.count || 0} · node=${status?.nodeService?.runtimeShort || "unknown"}`
     : "Gateway offline. Check token / service / CORS settings.";
 
@@ -1275,7 +1290,8 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/api/tasks/stats") {
     fetchTaskStatsAsync()
       .then((taskStats) => {
-        const body = taskStatsResponseBody(taskStats);
+        const fallbackTaskStats = taskStats || streamState.latestPayload?.openclaw?.tasks || null;
+        const body = taskStatsResponseBody(fallbackTaskStats);
         if (body) {
           sendJson(res, 200, body);
           return;
@@ -1298,7 +1314,11 @@ const server = http.createServer((req, res) => {
   if (req.method === "GET" && url.pathname === "/api/tasks/runtime") {
     fetchTaskRuntimeAsync()
       .then(async (taskRuntime) => {
-        const resolvedTaskRuntime = taskRuntime || synthesizeTaskRuntimeFromTaskStats(await fetchTaskStatsAsync().catch(() => null));
+        const fallbackTaskStats = await fetchTaskStatsAsync().catch(() => null);
+        const resolvedTaskRuntime =
+          taskRuntime
+          || streamState.latestPayload?.openclaw?.runtime
+          || synthesizeTaskRuntimeFromTaskStats(fallbackTaskStats);
         const body = taskRuntimeResponseBody(resolvedTaskRuntime);
         if (body) {
           sendJson(res, 200, body);

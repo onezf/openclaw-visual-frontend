@@ -9,6 +9,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const externalConfig = window.OPENCLAW_CONFIG || {};
 const useMock = urlParams.get("mock") === "1";
 const useDemo = urlParams.get("demo") === "1";
+const demoAlertEnabled = urlParams.get("demoAlert") === "1";
 const endpointOverride = urlParams.get("endpoint");
 const wsOverride = urlParams.get("ws");
 const tasksEndpointOverride = urlParams.get("tasksEndpoint");
@@ -2205,7 +2206,7 @@ function buildDemoPayloads() {
   const now = Date.now();
   const isoAt = (offsetMs) => new Date(now + offsetMs).toISOString();
 
-  return [
+  const payloads = [
     {
       zone: "rest",
       scene: "room",
@@ -2290,12 +2291,37 @@ function buildDemoPayloads() {
       ],
     },
     {
+      zone: "rest",
+      scene: "outdoor",
+      idleActivity: "supermarket",
+      position: { x: 13, y: 11 },
+      task: "逛超市补给",
+      description: `${ROBOT_DISPLAY_NAME} 当前没有新的运行任务，正在室外补给后返程。`,
+      mode: "IDLE",
+      alertLevel: "GREEN",
+      load: 10,
+      battery: 92,
+      temperature: 33,
+      updatedAt: isoAt(15000),
+      runtime: {
+        currentTask: null,
+        nextTask: null,
+        queueSummary: { queued: 0, running: 0, failed: 0 },
+      },
+      logs: [
+        { zone: "system", time: isoAt(15000), message: "演示模式：已完成休息区与工作区巡场，返回室外闲逛。" },
+      ],
+    },
+  ];
+
+  if (demoAlertEnabled) {
+    payloads.splice(3, 0, {
       zone: "alarm",
       scene: "room",
       idleActivity: "",
       position: { x: 20, y: 10 },
       task: "检查警报控制台",
-      description: `${ROBOT_DISPLAY_NAME} 已进入警报区，正在核对控制台与告警灯状态。`,
+      description: `${ROBOT_DISPLAY_NAME} 已收到警报，进入警报区核对控制台与告警灯状态。`,
       mode: "RUNNING",
       alertLevel: "AMBER",
       load: 48,
@@ -2317,30 +2343,10 @@ function buildDemoPayloads() {
       logs: [
         { zone: "alarm", time: isoAt(15000), message: "警报区亮灯，小龙虾已进入控制室检查。" },
       ],
-    },
-    {
-      zone: "rest",
-      scene: "outdoor",
-      idleActivity: "supermarket",
-      position: { x: 13, y: 11 },
-      task: "逛超市补给",
-      description: `${ROBOT_DISPLAY_NAME} 当前没有新的运行任务，正在室外补给后返程。`,
-      mode: "IDLE",
-      alertLevel: "GREEN",
-      load: 10,
-      battery: 92,
-      temperature: 33,
-      updatedAt: isoAt(20000),
-      runtime: {
-        currentTask: null,
-        nextTask: null,
-        queueSummary: { queued: 0, running: 0, failed: 0 },
-      },
-      logs: [
-        { zone: "system", time: isoAt(20000), message: "演示模式：已完成跨区巡场，返回室外闲逛。" },
-      ],
-    },
-  ];
+    });
+  }
+
+  return payloads;
 }
 
 function stopDemoLoop() {
@@ -2370,7 +2376,9 @@ function startDemoLoop() {
   pushFeedItem({
     zone: "system",
     time: new Date().toISOString(),
-    message: "演示模式已启动，将自动展示休息区、室外、工作区和警报区的活动过程。",
+    message: demoAlertEnabled
+      ? "演示模式已启动，将按流程展示休息区、室外、工作区，并在触发告警演示时进入警报区。"
+      : "演示模式已启动，将自动展示休息区、室外和工作区的活动过程；警报区只在出现告警时进入。",
   });
   applyDemoStep();
 }
