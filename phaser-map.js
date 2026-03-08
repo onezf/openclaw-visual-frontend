@@ -80,7 +80,7 @@
   const TOWN_PATROL_ROUTES = {
     rest: [{ x: 5, y: 15 }, { x: 8, y: 15 }, { x: 6, y: 15 }],
     work: [{ x: 15, y: 15 }, { x: 18, y: 15 }, { x: 15, y: 15 }],
-    alarm: [{ x: 24, y: 15 }, { x: 27, y: 15 }, { x: 29, y: 13 }, { x: 27, y: 12 }],
+    alarm: [{ x: 24, y: 15 }, { x: 27, y: 15 }, { x: 29, y: 15 }, { x: 27, y: 15 }],
   };
 
   const OUTDOOR_ACTIVITY_ROUTES = {
@@ -95,9 +95,18 @@
   };
 
   const TOWN_ZONE_DOORS = {
-    rest: { x: 6, y: 14 },
-    work: { x: 16, y: 14 },
-    alarm: { x: 27, y: 13 },
+    rest: {
+      walkTo: { x: 6, y: 15 },
+      anchor: { x: 6, y: 14.18 },
+    },
+    work: {
+      walkTo: { x: 16, y: 15 },
+      anchor: { x: 16, y: 14.18 },
+    },
+    alarm: {
+      walkTo: { x: 27, y: 15 },
+      anchor: { x: 27, y: 12.38 },
+    },
   };
 
   const ROOM_ENTRY_TILES = {
@@ -611,6 +620,16 @@
       return TOWN_ZONE_DOORS[zone] || TOWN_ZONE_DOORS.work;
     }
 
+    getTownDoorWalkTarget(zone) {
+      const door = this.getTownDoor(zone);
+      return door.walkTo || door;
+    }
+
+    getTownDoorAnchor(zone) {
+      const door = this.getTownDoor(zone);
+      return door.anchor || door.walkTo || door;
+    }
+
     getRoomEntryTile(zone) {
       return ROOM_ENTRY_TILES[zone] || ROOM_ENTRY_TILES.work;
     }
@@ -649,7 +668,7 @@
     }
 
     drawTownDoorOpen(zone, openness = 1) {
-      const door = this.getTownDoor(zone);
+      const door = this.getTownDoorAnchor(zone);
       if (!door) {
         return;
       }
@@ -882,7 +901,7 @@
         return;
       }
 
-      const door = this.getTownDoor(zone);
+      const door = this.getTownDoorWalkTarget(zone);
       await this.moveRobotTo(door, state.alertLevel, zone, OUTDOOR_PATROL_STEP_MS, true);
       if (this.sequenceId !== sequenceId) {
         return;
@@ -1034,20 +1053,20 @@
       house.fillRect(left + 12, top + pixelHeight - 14, pixelWidth - 24, 6);
 
       house.fillStyle(0x8f6748, 1);
-      house.fillRect(left + 24, top + 34, 28, 22);
+      house.fillRect(left + 62, top + pixelHeight - 44, 36, 24);
       house.fillStyle(0x1a2128, 1);
-      house.fillRect(left + 28, top + 38, 20, 18);
+      house.fillRect(left + 68, top + pixelHeight - 38, 24, 18);
       house.fillStyle(0xf1ddb0, 1);
-      house.fillRect(left + 28, top + 34, 20, 4);
+      house.fillRect(left + 68, top + pixelHeight - 44, 24, 4);
 
       house.fillStyle(0x6f4e39, 1);
-      house.fillRect(left + 62, top + 32, 42, 16);
+      house.fillRect(left + 28, top + 34, 42, 16);
       house.fillStyle(0x9fd2ff, 1);
-      house.fillRect(left + 66, top + 36, 34, 8);
+      house.fillRect(left + 32, top + 38, 34, 8);
       house.fillStyle(0xe3f5ff, 1);
-      house.fillRect(left + 66, top + 36, 4, 8);
+      house.fillRect(left + 32, top + 38, 4, 8);
       house.fillStyle(0x5d7c9c, 1);
-      house.fillRect(left + 81, top + 36, 4, 8);
+      house.fillRect(left + 47, top + 38, 4, 8);
 
       house.fillStyle(0x2c3641, 1);
       house.fillRect(left + 88, top + 20, 22, 12);
