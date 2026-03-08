@@ -263,6 +263,64 @@ body::after {
   word-break: break-word;
 }
 
+.task-actions[hidden] {
+  display: none;
+}
+
+.task-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 2px solid rgba(131, 185, 176, 0.18);
+}
+
+.task-actions__buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.task-action-btn {
+  appearance: none;
+  border: 3px solid rgba(214, 239, 115, 0.4);
+  background: rgba(13, 37, 36, 0.92);
+  color: var(--paper);
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.task-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(214, 239, 115, 0.72);
+  background: rgba(22, 57, 55, 0.96);
+}
+
+.task-action-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.task-action-btn--secondary {
+  border-color: rgba(240, 201, 111, 0.38);
+}
+
+.task-action-btn--secondary:hover:not(:disabled) {
+  border-color: rgba(240, 201, 111, 0.7);
+}
+
+.task-actions__note {
+  margin: 0;
+  color: rgba(244, 241, 207, 0.78);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  min-height: 1.5em;
+}
+
 .card-heading h2 {
   margin: 6px 0 0;
 }

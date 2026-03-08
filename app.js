@@ -15,6 +15,8 @@ const wsOverride = urlParams.get("ws");
 const tasksEndpointOverride = urlParams.get("tasksEndpoint");
 const runtimeEndpointOverride = urlParams.get("runtimeEndpoint");
 const DEMO_STEP_DURATION_MS = Math.max(Number(urlParams.get("demoStepMs") || 5200), 2500);
+const REST_ANIMATION_CYCLE_MS = 10 * 60 * 1000;
+const REST_ROOM_PHASE_MS = 6 * 60 * 1000;
 
 const CONFIG = {
   endpoint: endpointOverride || (useMock ? externalConfig.mockEndpoint || "./mock-status.json" : externalConfig.endpoint || "/api/openclaw/status"),
@@ -108,6 +110,10 @@ const refs = {
   zoneName: document.getElementById("zoneName"),
   taskName: document.getElementById("taskName"),
   taskSummary: document.getElementById("taskSummary"),
+  taskActions: document.getElementById("taskActions"),
+  retryTaskButton: document.getElementById("retryTaskButton"),
+  resolveTaskButton: document.getElementById("resolveTaskButton"),
+  taskActionNote: document.getElementById("taskActionNote"),
   modeValue: document.getElementById("modeValue"),
   alertValue: document.getElementById("alertValue"),
   loadValue: document.getElementById("loadValue"),
@@ -129,6 +135,7 @@ let robotTile = null;
 let alertLightTiles = [];
 let lastStateSignature = "";
 let lastSuccessfulState = null;
+let lastRenderedState = null;
 let connectionState = "offline";
 let websocket = null;
 let reconnectTimer = 0;
@@ -136,6 +143,8 @@ let pollTimer = 0;
 let pollActive = false;
 let lastRobotSignature = "";
 let lastFeedSignature = "";
+let taskActionInFlight = "";
+let taskActionMessage = "";
 let rawStatusCache = null;
 let lastEventId = "";
 let wsCloseHint = "";
@@ -147,6 +156,7 @@ let latestTaskRuntime = null;
 let lastTaskRuntimeSignature = "";
 let taskRuntimeRefreshPromise = null;
 let demoTimer = 0;
+let restAnimationTimer = 0;
 let feedItems = [
   {
     zone: "system",
@@ -428,9 +438,16 @@ function normalizeTaskStatsPayload(payload) {
     done: done ?? 0,
     currentTask: currentTask
       ? {
+          taskId: currentTask.taskId || currentTask.id || "",
           title: currentTask.title || currentTask.name || "",
           status: String(currentTask.status || "").toLowerCase(),
           progress: safeNumber(currentTask.progress),
+          updatedAt: currentTask.updatedAt || "",
+          failureReason: String(currentTask.failureReason || "").trim(),
+          lastError: String(currentTask.lastError || "").trim(),
+          availableActions: Array.isArray(currentTask.availableActions)
+            ? currentTask.availableActions.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)
+            : [],
         }
       : null,
   };
@@ -463,6 +480,11 @@ function normalizeTaskRuntimePayload(payload) {
           startedAt: currentTaskRoot.startedAt || currentTaskRoot.updatedAt || "",
           progress: safeNumber(currentTaskRoot.progress),
           etaSeconds: safeNumber(firstDefined(currentTaskRoot.etaSeconds, currentTaskRoot.eta)),
+          failureReason: String(currentTaskRoot.failureReason || "").trim(),
+          lastError: String(currentTaskRoot.lastError || "").trim(),
+          availableActions: Array.isArray(currentTaskRoot.availableActions)
+            ? currentTaskRoot.availableActions.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)
+            : [],
         }
       : null,
     nextTask: nextTaskRoot
@@ -742,6 +764,42 @@ function formatIdleActivitySentence(label) {
   }
 
   return `正在${label}`;
+}
+
+function resolveFrontEndRestAnimation(runtime) {
+  const queued = safeNumber(runtime?.queueSummary?.queued) || 0;
+  if (queued > 0) {
+    return {
+      scene: "room",
+      idleActivity: "stay_home",
+      position: { x: 4, y: 6 },
+      taskLabel: "等待任务安排",
+      description: `${ROBOT_DISPLAY_NAME} 当前没有运行任务，正在休息区待命。`,
+      nextChangeMs: 0,
+    };
+  }
+
+  const now = Date.now();
+  const phase = now % REST_ANIMATION_CYCLE_MS;
+  if (phase < REST_ROOM_PHASE_MS) {
+    return {
+      scene: "room",
+      idleActivity: "stay_home",
+      position: { x: 4, y: 6 },
+      taskLabel: "休息中",
+      description: `${ROBOT_DISPLAY_NAME} 当前没有运行任务，正在休息区待命。`,
+      nextChangeMs: REST_ROOM_PHASE_MS - phase,
+    };
+  }
+
+  return {
+    scene: "outdoor",
+    idleActivity: "walk_dog",
+    position: { x: 5, y: 11 },
+    taskLabel: "遛狗中",
+    description: `${ROBOT_DISPLAY_NAME} 当前没有运行任务，正在室外活动。`,
+    nextChangeMs: REST_ANIMATION_CYCLE_MS - phase,
+  };
 }
 
 function translateSessionKey(value) {
@@ -1086,6 +1144,116 @@ function translateTaskWorkflowStatus(value) {
   return labels[raw] || raw || "待开始";
 }
 
+function setTaskActionVisibility(visible) {
+  if (!refs.taskActions) {
+    return;
+  }
+
+  refs.taskActions.hidden = !visible;
+}
+
+function buildTaskActionUrl(taskId, action) {
+  return `/api/tasks/${encodeURIComponent(taskId)}/${action}`;
+}
+
+function updateTaskActions(state) {
+  if (!refs.taskActions) {
+    return;
+  }
+
+  const task = state?.actionableTask || null;
+  const actions = Array.isArray(task?.availableActions) ? task.availableActions : [];
+  const showRetry = actions.includes("retry");
+  const showResolve = actions.includes("resolve");
+  const visible = !useMock && !useDemo && Boolean(task?.taskId) && (showRetry || showResolve);
+
+  setTaskActionVisibility(visible);
+  if (!visible) {
+    refs.retryTaskButton.hidden = true;
+    refs.resolveTaskButton.hidden = true;
+    refs.taskActionNote.textContent = "";
+    return;
+  }
+
+  refs.retryTaskButton.hidden = !showRetry;
+  refs.resolveTaskButton.hidden = !showResolve;
+  refs.retryTaskButton.disabled = Boolean(taskActionInFlight);
+  refs.resolveTaskButton.disabled = Boolean(taskActionInFlight);
+
+  if (taskActionInFlight === "retry") {
+    refs.retryTaskButton.textContent = "重试中...";
+  } else {
+    refs.retryTaskButton.textContent = "重试任务";
+  }
+
+  if (taskActionInFlight === "resolve") {
+    refs.resolveTaskButton.textContent = "处理中...";
+  } else {
+    refs.resolveTaskButton.textContent = "处理完成";
+  }
+
+  const note = taskActionMessage
+    || task.failureReason
+    || task.lastError
+    || (showRetry ? "当前失败任务可直接重试或标记处理完成。" : "当前任务可标记处理完成。");
+  refs.taskActionNote.textContent = translateIncomingText(note);
+}
+
+async function performTaskAction(action) {
+  const state = lastRenderedState;
+  const task = state?.actionableTask;
+
+  if (!task?.taskId || !Array.isArray(task.availableActions) || !task.availableActions.includes(action)) {
+    return;
+  }
+
+  taskActionInFlight = action;
+  taskActionMessage = action === "retry" ? "正在发起重试..." : "正在更新处理结果...";
+  updateTaskActions(state);
+
+  try {
+    const response = await fetch(buildTaskActionUrl(task.taskId, action), {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...CONFIG.headers,
+      },
+      body: "{}",
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.ok === false) {
+      throw new Error(payload?.detail || payload?.error || payload?.message || `HTTP ${response.status}`);
+    }
+
+    taskActionMessage = action === "retry" ? "已发起重试，正在同步最新状态。" : "已标记处理完成，正在同步最新状态。";
+    pushFeedItem({
+      zone: "system",
+      time: new Date().toISOString(),
+      message: taskActionMessage,
+    });
+
+    const result = await fetchStatus(true);
+    await Promise.all([refreshTaskStats(true), refreshTaskRuntime(true)]);
+    commitOnlineState(result.raw, {
+      source: "http",
+      recoveryMessage: "任务动作已同步到页面。",
+    });
+  } catch (error) {
+    taskActionMessage = `任务动作失败：${translateIncomingText(error?.message || "未知错误")}`;
+    pushFeedItem({
+      zone: "system",
+      time: new Date().toISOString(),
+      message: taskActionMessage,
+    });
+  } finally {
+    taskActionInFlight = "";
+    updateTaskActions(lastRenderedState);
+  }
+}
+
 function buildRuntimeSummary(runtime) {
   if (!runtime) {
     return "";
@@ -1201,27 +1369,34 @@ function normalizeStatus(payload) {
       ? "alarm"
       : latestTaskStats.doing > 0
         ? "work"
-        : latestTaskStats.total === 0
+      : latestTaskStats.total === 0
           ? "rest"
           : ""
     : "";
   const guessedZone = explicitZone || statsZone || runtimeZone;
-  const idleActivity = normalizeIdleActivity(firstDefined(
+  let idleActivity = normalizeIdleActivity(firstDefined(
     root.idleActivity,
     root.activity,
     payload.idleActivity,
     payload.activity,
-    latestTaskStats && latestTaskStats.total === 0 ? "stroll" : "",
   ));
   const rawScene = normalizeScene(firstDefined(root.scene, root.view, payload.scene, payload.view, idleActivity ? "outdoor" : ""));
-  const scene = latestTaskStats && latestTaskStats.total === 0 && guessedZone === "rest"
-    ? "outdoor"
-    : (rawScene || (idleActivity ? "outdoor" : "room"));
-  const rawPosition = normalizePosition(
+  let scene = rawScene || (idleActivity ? "outdoor" : "room");
+  let rawPosition = normalizePosition(
     firstDefined(root.position, root.coords, root.coordinate, root.tile, { x: root.x, y: root.y }),
     guessedZone || "rest",
   );
   const zone = guessedZone || detectZoneFromPosition(rawPosition);
+  const frontEndRestAnimation = !useDemo && zone === "rest"
+    ? resolveFrontEndRestAnimation(runtime)
+    : null;
+
+  if (frontEndRestAnimation) {
+    scene = frontEndRestAnimation.scene;
+    idleActivity = frontEndRestAnimation.idleActivity;
+    rawPosition = frontEndRestAnimation.position;
+  }
+
   const mapPosition = projectPositionIntoZone(rawPosition, zone);
   const logs = normalizeLogs(firstDefined(payload.logs, payload.feed, payload.events, root.logs));
   const runtimeLogs = buildRuntimeLogEntries(runtime, zone, firstDefined(payload.updatedAt, payload.timestamp, new Date().toISOString()));
@@ -1259,11 +1434,11 @@ function normalizeStatus(payload) {
       : latestTaskStats.doing > 0
         ? (statsTaskTitle || `进行中任务 ${latestTaskStats.doing} 项`)
       : latestTaskStats.total === 0
-          ? "外出放风"
+          ? "休息中"
           : "等待任务安排"
     : "";
   const rawTask = translateIncomingText(firstDefined(runtimeFallbackTask, explicitTask, statsFallbackTask, runtimeTaskTitle, fallbackTask));
-  const task = scene === "outdoor" && looksLikeEmptyTask(rawTask) ? fallbackTask : rawTask;
+  let task = scene === "outdoor" && looksLikeEmptyTask(rawTask) ? fallbackTask : rawTask;
   const fallbackDescription = scene === "outdoor"
     ? `${ROBOT_DISPLAY_NAME} 当前暂无任务，${formatIdleActivitySentence(idleActivityLabel)}。`
     : `${ROBOT_DISPLAY_NAME} 已同步到像素地图。`;
@@ -1271,10 +1446,20 @@ function normalizeStatus(payload) {
   const explicitDescription = firstDefined(root.description, root.statusText, root.message, payload.description, "");
   const statsDescription = latestTaskStats
     ? latestTaskStats.total === 0
-      ? `${ROBOT_DISPLAY_NAME} 当前没有任务，正在室外闲逛放风。`
+      ? `${ROBOT_DISPLAY_NAME} 当前没有任务，正在休息区待命。`
       : `任务总数 ${latestTaskStats.total} 项 · 进行中 ${latestTaskStats.doing} 项${latestTaskStats.blocked > 0 ? ` · 阻塞 ${latestTaskStats.blocked} 项` : ""}`
     : "";
-  const description = translateIncomingText(firstDefined(runtimeDescription, explicitDescription, statsDescription, fallbackDescription));
+  let description = translateIncomingText(firstDefined(runtimeDescription, explicitDescription, statsDescription, fallbackDescription));
+  const actionableTask = runtime?.currentTask?.taskId
+    ? runtime.currentTask
+    : latestTaskStats?.currentTask?.taskId
+      ? latestTaskStats.currentTask
+      : null;
+
+  if (frontEndRestAnimation) {
+    task = frontEndRestAnimation.taskLabel;
+    description = frontEndRestAnimation.description;
+  }
 
   return {
     zone,
@@ -1297,6 +1482,9 @@ function normalizeStatus(payload) {
     taskCount: formatTaskCount(resolveTaskCount(root, payload)),
     updatedAt: firstDefined(root.updatedAt, root.lastUpdate, payload.updatedAt, payload.timestamp, new Date().toISOString()),
     logs: mergeFeedEntries(runtimeLogs, logs),
+    runtime,
+    actionableTask,
+    restAnimationNextMs: frontEndRestAnimation?.nextChangeMs || 0,
   };
 }
 
@@ -1742,6 +1930,10 @@ function setInterfaceStatus(state) {
 }
 
 function renderNoSignal(message) {
+  if (restAnimationTimer) {
+    clearTimeout(restAnimationTimer);
+    restAnimationTimer = 0;
+  }
   setText(refs.zoneName, "未连接");
   setText(refs.taskName, "等待后台状态");
   setTitle(refs.taskName, "等待后台状态");
@@ -1764,12 +1956,20 @@ function renderNoSignal(message) {
     setAlertLights("OFFLINE");
     clearRobot();
   }
+  lastRenderedState = null;
+  updateTaskActions(null);
   lastStateSignature = "";
 }
 
 function renderState(state, options = {}) {
+  if (restAnimationTimer) {
+    clearTimeout(restAnimationTimer);
+    restAnimationTimer = 0;
+  }
   const nextSignature = stateSignature(state);
   const changed = nextSignature !== lastStateSignature;
+  const previousTaskId = lastRenderedState?.actionableTask?.taskId || "";
+  const nextTaskId = state?.actionableTask?.taskId || "";
   const displayTask = resolveDisplayTask(state);
   const bannerArea = resolveBannerArea(state);
 
@@ -1798,6 +1998,13 @@ function renderState(state, options = {}) {
     lastStateSignature = nextSignature;
   }
 
+  if (!taskActionInFlight && (changed || previousTaskId !== nextTaskId)) {
+    taskActionMessage = "";
+  }
+
+  lastRenderedState = state;
+  updateTaskActions(state);
+
   setText(refs.lastSeenValue, formatDateTime(state.updatedAt));
   refs.alertValue.dataset.alert = state.alertLevel;
   if (!hasPhaserMap()) {
@@ -1814,6 +2021,18 @@ function renderState(state, options = {}) {
         message: `${bannerArea} 执行 ${displayTask}，坐标落点 (${pad2(state.position.x)}, ${pad2(state.position.y)})。`,
       });
     }
+  }
+
+  if (!useDemo && rawStatusCache && state.zone === "rest" && Number(state.restAnimationNextMs) > 0) {
+    restAnimationTimer = window.setTimeout(() => {
+      restAnimationTimer = 0;
+      if (!rawStatusCache) {
+        return;
+      }
+      const nextState = normalizeStatus(rawStatusCache);
+      lastSuccessfulState = nextState;
+      renderState(nextState, { source: "rest-animation" });
+    }, Math.max(Number(state.restAnimationNextMs), 1000));
   }
 }
 
@@ -2421,6 +2640,12 @@ updateClock();
 renderNoSignal("等待后端状态。需要返回 zone、position.x、position.y、task、alertLevel。");
 window.setInterval(updateClock, 1000);
 window.addEventListener("resize", queueMapViewportSync);
+refs.retryTaskButton?.addEventListener("click", () => {
+  void performTaskAction("retry");
+});
+refs.resolveTaskButton?.addEventListener("click", () => {
+  void performTaskAction("resolve");
+});
 if (typeof ResizeObserver === "function") {
   const mapResizeObserver = new ResizeObserver(() => {
     queueMapViewportSync();

@@ -71,6 +71,13 @@
           <p class="mission-card__summary" id="taskSummary">
             后台返回当前分区和坐标后，主视图会先经过分区总览，再切到对应房间，并把小龙虾落到室内真实位置。
           </p>
+          <div class="task-actions" id="taskActions" hidden>
+            <div class="task-actions__buttons">
+              <button type="button" class="task-action-btn" id="retryTaskButton">重试任务</button>
+              <button type="button" class="task-action-btn task-action-btn--secondary" id="resolveTaskButton">处理完成</button>
+            </div>
+            <p class="task-actions__note" id="taskActionNote"></p>
+          </div>
         </div>
       </section>
 

@@ -9,15 +9,47 @@ const PORT = Number(process.env.PORT || 3008);
 const WEB_ROOT = __dirname;
 const ROBOT_NAME = "小龙虾";
 
+function readApiKeyFromDotenv(filePath) {
+  try {
+    const content = fs.readFileSync(filePath, "utf8");
+    const line = content
+      .split(/\r?\n/)
+      .find((entry) => entry.trim().startsWith("API_KEY="));
+    return line ? line.slice("API_KEY=".length).trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+function discoverOpenclawApiKey() {
+  const homeDir = process.env.HOME || "";
+  const candidates = [
+    path.join(__dirname, "..", "openclaw-visual-backend", ".env"),
+    path.join(homeDir, ".openclaw", "workspace", "openclaw-visual-backend", ".env"),
+  ];
+
+  for (const candidate of candidates) {
+    const value = readApiKeyFromDotenv(candidate);
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
 const STATUS_TIMEOUT_MS = Number(process.env.OPENCLAW_STATUS_TIMEOUT_MS || 12000);
 const STATUS_POLL_INTERVAL_MS = Number(process.env.OPENCLAW_STATUS_POLL_INTERVAL_MS || 3500);
 const STATUS_REFRESH_DEBOUNCE_MS = Number(process.env.OPENCLAW_STATUS_REFRESH_DEBOUNCE_MS || 150);
 const STATUS_REFRESH_MIN_INTERVAL_MS = Number(process.env.OPENCLAW_STATUS_REFRESH_MIN_INTERVAL_MS || 600);
+const STATUS_URL = process.env.OPENCLAW_STATUS_URL || "";
 const TASK_STATS_URL = process.env.OPENCLAW_TASK_STATS_URL || "";
 const TASK_RUNTIME_URL = process.env.OPENCLAW_TASK_RUNTIME_URL || "";
 const TASK_STATS_TIMEOUT_MS = Number(process.env.OPENCLAW_TASK_STATS_TIMEOUT_MS || 5000);
 const TASK_RUNTIME_TIMEOUT_MS = Number(process.env.OPENCLAW_TASK_RUNTIME_TIMEOUT_MS || TASK_STATS_TIMEOUT_MS);
 const TASK_STATS_AUTH_TOKEN = process.env.OPENCLAW_TASK_STATS_AUTH_TOKEN || "";
+const OPENCLAW_API_KEY = process.env.OPENCLAW_API_KEY || process.env.OPENCLAW_BACKEND_API_KEY || discoverOpenclawApiKey();
+const OPENCLAW_AUTH_TOKEN = process.env.OPENCLAW_AUTH_TOKEN || TASK_STATS_AUTH_TOKEN || "";
 
 const WS_PATH = process.env.OPENCLAW_WS_PATH || "/ws/openclaw/status";
 const WS_PING_INTERVAL_MS = Number(process.env.OPENCLAW_WS_PING_INTERVAL_MS || 20000);
@@ -125,6 +157,8 @@ function getTaskEndpointCandidates(explicitUrl, pathname) {
   ]);
 
   return [
+    `http://127.0.0.1:8787${pathname}`,
+    `http://localhost:8787${pathname}`,
     `http://localhost:3008${pathname}`,
     `http://127.0.0.1:3010${pathname}`,
     `http://localhost:3010${pathname}`,
@@ -139,12 +173,116 @@ function getTaskEndpointCandidates(explicitUrl, pathname) {
   });
 }
 
+function getStatusEndpointCandidates() {
+  const fromEnv = String(STATUS_URL || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (fromEnv.length > 0) {
+    return fromEnv;
+  }
+
+  return [
+    "http://127.0.0.1:8787/api/openclaw/status",
+    "http://localhost:8787/api/openclaw/status",
+  ];
+}
+
+function buildUpstreamHeaders() {
+  return {
+    Accept: "application/json",
+    ...(OPENCLAW_API_KEY ? { "x-api-key": OPENCLAW_API_KEY } : {}),
+    ...(OPENCLAW_AUTH_TOKEN ? { Authorization: `Bearer ${OPENCLAW_AUTH_TOKEN}` } : {}),
+  };
+}
+
+async function fetchJsonFromCandidates(candidates, timeoutMs) {
+  let lastError = null;
+
+  for (const url of candidates) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        headers: buildUpstreamHeaders(),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        lastError = new Error(`HTTP ${response.status} from ${url}`);
+        continue;
+      }
+
+      return await response.json();
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  throw new Error("No upstream candidates configured.");
+}
+
+async function postJsonToCandidates(candidates, timeoutMs, body = {}) {
+  let lastError = null;
+
+  for (const url of candidates) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          ...buildUpstreamHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        lastError = new Error(payload?.error || payload?.message || `HTTP ${response.status} from ${url}`);
+        continue;
+      }
+
+      return payload;
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  if (lastError) {
+    throw lastError;
+  }
+
+  throw new Error("No upstream candidates configured.");
+}
+
 function getTaskStatsCandidates() {
   return getTaskEndpointCandidates(TASK_STATS_URL, "/api/tasks/stats");
 }
 
 function getTaskRuntimeCandidates() {
   return getTaskEndpointCandidates(TASK_RUNTIME_URL, "/api/tasks/runtime");
+}
+
+function getTaskActionCandidates(taskId, action) {
+  return getTaskEndpointCandidates("", `/api/tasks/${encodeURIComponent(taskId)}/${action}`);
 }
 
 function deriveTaskStatsFromPayload(payload) {
@@ -219,6 +357,11 @@ function deriveTaskStatsFromPayload(payload) {
           progress: toFiniteNumber(currentTask.progress),
           dueAt: currentTask.dueAt || "",
           updatedAt: currentTask.updatedAt || "",
+          failureReason: currentTask.failureReason || "",
+          lastError: currentTask.lastError || "",
+          availableActions: Array.isArray(currentTask.availableActions)
+            ? currentTask.availableActions.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)
+            : [],
         }
       : null,
     source: TASK_STATS_URL ? "task-stats-endpoint" : "task-stats-auto",
@@ -314,6 +457,11 @@ function deriveTaskRuntimeFromPayload(payload) {
           startedAt: currentTaskRoot.startedAt || currentTaskRoot.updatedAt || "",
           progress: toFiniteNumber(currentTaskRoot.progress),
           etaSeconds: firstFiniteNumber(currentTaskRoot.etaSeconds, currentTaskRoot.eta),
+          failureReason: currentTaskRoot.failureReason || "",
+          lastError: currentTaskRoot.lastError || "",
+          availableActions: Array.isArray(currentTaskRoot.availableActions)
+            ? currentTaskRoot.availableActions.map((item) => String(item || "").trim().toLowerCase()).filter(Boolean)
+            : [],
         }
       : null,
     nextTask: nextTaskRoot
@@ -579,6 +727,13 @@ function replayEventsFrom(ws, lastEventIdRaw) {
 }
 
 function mapAlertLevel(status) {
+  const explicit = String(status?.alertLevel || status?.alert || status?.riskLevel || "")
+    .trim()
+    .toUpperCase();
+  if (["GREEN", "BLUE", "AMBER", "RED", "OFFLINE"].includes(explicit)) {
+    return explicit;
+  }
+
   const reachable = Boolean(status?.gateway?.reachable);
   const critical = Number(status?.securityAudit?.summary?.critical || 0);
   const warn = Number(status?.securityAudit?.summary?.warn || 0);
@@ -592,7 +747,34 @@ function mapAlertLevel(status) {
   return "GREEN";
 }
 
+function mapExplicitZone(status) {
+  const raw = String(status?.zone || status?.currentZone || status?.area || "")
+    .trim()
+    .toLowerCase();
+
+  if (!raw) {
+    return "";
+  }
+
+  if (["rest", "idle", "standby", "sleep", "room", "home", "休息", "休息区", "待机", "房间"].some((token) => raw.includes(token))) {
+    return "rest";
+  }
+  if (["work", "running", "task", "job", "工作", "执行", "工位"].some((token) => raw.includes(token))) {
+    return "work";
+  }
+  if (["alarm", "alert", "warning", "danger", "警报", "告警", "异常"].some((token) => raw.includes(token))) {
+    return "alarm";
+  }
+
+  return "";
+}
+
 function mapZone(status, alertLevel, taskStats, taskRuntime) {
+  const explicitZone = mapExplicitZone(status);
+  if (explicitZone) {
+    return explicitZone;
+  }
+
   if (alertLevel === "RED") {
     return "alarm";
   }
@@ -612,47 +794,15 @@ function mapZone(status, alertLevel, taskStats, taskRuntime) {
     return "rest";
   }
 
-  const sessionCount = Number(status?.sessions?.count || 0);
-  if (sessionCount > 0) {
-    return "work";
-  }
-
   return "rest";
 }
 
-function resolveRestIdleRoutine(taskRuntime, now = new Date()) {
-  const running = toFiniteNumber(taskRuntime?.queueSummary?.running);
-  const failed = toFiniteNumber(taskRuntime?.queueSummary?.failed);
-  const queued = toFiniteNumber(taskRuntime?.queueSummary?.queued);
-
-  if ((running || 0) > 0 || (failed || 0) > 0 || taskRuntime?.currentTask?.title) {
-    return { scene: "room", idleActivity: "" };
-  }
-
-  if ((queued || 0) > 0) {
-    return { scene: "room", idleActivity: "stay_home" };
-  }
-
-  const slot = now.getMinutes() % 20;
-  if (slot < 12) {
-    return { scene: "room", idleActivity: "stay_home" };
-  }
-
-  return { scene: "outdoor", idleActivity: "walk_dog" };
-}
-
-function zonePosition(zone, scene = "room", idleActivity = "") {
+function zonePosition(zone) {
   if (zone === "work") {
     return { x: 17, y: 7 };
   }
   if (zone === "alarm") {
     return { x: 18, y: 13 };
-  }
-  if (scene === "outdoor") {
-    if (idleActivity === "walk_dog") {
-      return { x: 5, y: 11 };
-    }
-    return { x: 6, y: 10 };
   }
   return { x: 4, y: 6 };
 }
@@ -749,22 +899,6 @@ function buildRuntimeSummary(taskRuntime) {
   return parts.join(" ｜ ");
 }
 
-function resolveScene(taskStats, taskRuntime, zone) {
-  if (zone !== "rest") {
-    return "room";
-  }
-
-  return resolveRestIdleRoutine(taskRuntime).scene;
-}
-
-function resolveIdleActivity(taskStats, taskRuntime, scene) {
-  if (scene !== "outdoor") {
-    return "";
-  }
-
-  return resolveRestIdleRoutine(taskRuntime).idleActivity;
-}
-
 function idleActivityTaskLabel(idleActivity) {
   const labels = {
     walk_dog: "遛狗中",
@@ -779,6 +913,42 @@ function idleActivityTaskLabel(idleActivity) {
   return labels[idleActivity] || "外出放风";
 }
 
+function readExplicitPosition(status) {
+  const x = firstFiniteNumber(
+    status?.position?.x,
+    status?.coords?.x,
+    status?.coordinate?.x,
+    status?.tile?.x,
+    status?.x,
+  );
+  const y = firstFiniteNumber(
+    status?.position?.y,
+    status?.coords?.y,
+    status?.coordinate?.y,
+    status?.tile?.y,
+    status?.y,
+  );
+
+  if (x === null || y === null) {
+    return null;
+  }
+
+  return { x, y };
+}
+
+function hasExplicitStatusFields(status) {
+  return Boolean(
+    mapExplicitZone(status)
+    || status?.task
+    || status?.taskName
+    || status?.description
+    || status?.message
+    || status?.mode
+    || status?.alertLevel
+    || readExplicitPosition(status),
+  );
+}
+
 async function fetchTaskStatsAsync() {
   const candidates = getTaskStatsCandidates();
   for (const url of candidates) {
@@ -790,7 +960,7 @@ async function fetchTaskStatsAsync() {
         method: "GET",
         cache: "no-store",
         headers: {
-          Accept: "application/json",
+          ...buildUpstreamHeaders(),
           ...(TASK_STATS_AUTH_TOKEN ? { Authorization: `Bearer ${TASK_STATS_AUTH_TOKEN}` } : {}),
         },
         signal: controller.signal,
@@ -829,7 +999,7 @@ async function fetchTaskRuntimeAsync() {
         method: "GET",
         cache: "no-store",
         headers: {
-          Accept: "application/json",
+          ...buildUpstreamHeaders(),
           ...(TASK_STATS_AUTH_TOKEN ? { Authorization: `Bearer ${TASK_STATS_AUTH_TOKEN}` } : {}),
         },
         signal: controller.signal,
@@ -860,21 +1030,24 @@ async function fetchTaskRuntimeAsync() {
 function toDashboardPayload(status, taskStats, taskRuntime) {
   const alertLevel = mapAlertLevel(status);
   const resolvedTaskStats = taskStats || deriveTaskStatsFromStatus(status) || {
-    taskCount: Number(status?.sessions?.count || 0),
-    totalTasks: Number(status?.sessions?.count || 0),
-    source: "sessions-fallback",
+    taskCount: 0,
+    totalTasks: 0,
+    source: "empty-fallback",
   };
   const resolvedTaskRuntime = taskRuntime || synthesizeTaskRuntimeFromTaskStats(resolvedTaskStats);
   const zone = mapZone(status, alertLevel, resolvedTaskStats, resolvedTaskRuntime);
+  const explicitTask = String(status?.task || status?.taskName || status?.action || "").trim();
+  const explicitDescription = String(status?.description || status?.message || status?.statusText || "").trim();
+  const explicitMode = String(status?.mode || status?.status || "").trim().toUpperCase();
+  const explicitPosition = readExplicitPosition(status);
   const recent = status?.sessions?.recent?.[0] || null;
   const now = new Date().toISOString();
-  const idleRoutine = zone === "rest"
-    ? resolveRestIdleRoutine(resolvedTaskRuntime, new Date(now))
-    : { scene: "room", idleActivity: "" };
-  const scene = zone === "rest" ? idleRoutine.scene : "room";
-  const idleActivity = scene === "outdoor" ? idleRoutine.idleActivity : "";
-  const position = zonePosition(zone, scene, idleActivity);
-  const reachable = Boolean(status?.gateway?.reachable);
+  const scene = "room";
+  const idleActivity = "";
+  const position = explicitPosition || zonePosition(zone);
+  const reachable = status?.gateway?.reachable !== undefined
+    ? Boolean(status?.gateway?.reachable)
+    : hasExplicitStatusFields(status);
   const queued = Array.isArray(status?.queuedSystemEvents) ? status.queuedSystemEvents.length : 0;
   const currentTask = resolvedTaskRuntime?.currentTask || resolvedTaskStats?.currentTask || null;
   const nextTask = resolvedTaskRuntime?.nextTask || null;
@@ -887,13 +1060,13 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
   const runningCount = toFiniteNumber(resolvedTaskRuntime?.queueSummary?.running);
   const queuedCount = toFiniteNumber(resolvedTaskRuntime?.queueSummary?.queued);
   const failedCount = toFiniteNumber(resolvedTaskRuntime?.queueSummary?.failed);
-  const mode = !reachable
+  const mode = explicitMode || (!reachable
     ? "OFFLINE"
     : (runningCount || doingCount || 0) > 0
       ? "RUNNING"
       : (failedCount || blockedCount || 0) > 0
         ? "ERROR"
-        : "IDLE";
+        : "IDLE");
 
   const contextTokens = Number(recent?.contextTokens || 0);
   const inputTokens = Number(recent?.inputTokens || 0);
@@ -902,10 +1075,10 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
 
   let task = "Gateway unreachable";
   if (reachable) {
-    if (currentTask?.title) {
+    if (explicitTask) {
+      task = explicitTask;
+    } else if (currentTask?.title) {
       task = currentTask.title;
-    } else if (scene === "outdoor") {
-      task = idleActivityTaskLabel(idleActivity);
     } else if (zone === "rest") {
       task = (queuedCount || 0) > 0 ? (nextTask?.title || "等待任务安排") : "休息中";
     } else if ((failedCount || blockedCount || 0) > 0) {
@@ -922,12 +1095,12 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
   }
 
   const description = reachable
-    ? currentTask?.title
+    ? explicitDescription
+      ? explicitDescription
+      : currentTask?.title
       ? runtimeSummary || taskSummary || `Gateway online · sessions=${status?.sessions?.count || 0} · node=${status?.nodeService?.runtimeShort || "unknown"}`
-      : scene === "outdoor"
-        ? `${ROBOT_NAME}当前没有运行任务，正在室外活动。`
-        : zone === "rest"
-          ? `${ROBOT_NAME}当前没有运行任务，正在休息区待命。`
+      : zone === "rest"
+        ? `${ROBOT_NAME}当前没有运行任务，正在休息区待命。`
         : runtimeSummary || taskSummary || `Gateway online · sessions=${status?.sessions?.count || 0} · node=${status?.nodeService?.runtimeShort || "unknown"}`
     : "Gateway offline. Check token / service / CORS settings.";
 
@@ -952,12 +1125,6 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
       zone,
       time: currentTask.updatedAt || currentTask.startedAt || now,
       message: `${currentTask.title} · ${translateTaskStatus(currentTask.status)} · ${(currentTask.progress ?? 0)}%${currentTask.etaSeconds ? ` · 预计 ${formatEtaLabel(currentTask.etaSeconds)}` : ""}`,
-    });
-  } else if (scene === "outdoor") {
-    logs.unshift({
-      zone,
-      time: now,
-      message: "当前无任务，小龙虾正在室外闲逛。",
     });
   }
 
@@ -1015,7 +1182,7 @@ function toDashboardPayload(status, taskStats, taskRuntime) {
   };
 }
 
-function fetchOpenclawStatus(callback) {
+function fetchOpenclawStatusFromCli(callback) {
   execFile(
     "/bin/zsh",
     ["-lc", "openclaw --no-color status --json"],
@@ -1041,9 +1208,9 @@ function fetchOpenclawStatus(callback) {
   );
 }
 
-function fetchOpenclawStatusAsync() {
+function fetchOpenclawStatusFromCliAsync() {
   return new Promise((resolve, reject) => {
-    fetchOpenclawStatus((error, status, stderr) => {
+    fetchOpenclawStatusFromCli((error, status, stderr) => {
       if (error) {
         const wrapped = new Error(error.message);
         wrapped.stderr = (stderr || "").trim();
@@ -1053,6 +1220,30 @@ function fetchOpenclawStatusAsync() {
       resolve(status);
     });
   });
+}
+
+function unwrapUpstreamStatusPayload(payload) {
+  const root = payload?.data || payload?.status || payload;
+  return isPlainObject(root) ? root : null;
+}
+
+async function fetchOpenclawStatusAsync() {
+  try {
+    const payload = await fetchJsonFromCandidates(getStatusEndpointCandidates(), STATUS_TIMEOUT_MS);
+    const unwrapped = unwrapUpstreamStatusPayload(payload);
+    if (unwrapped) {
+      return unwrapped;
+    }
+    throw new Error("Upstream status payload is not a JSON object.");
+  } catch (upstreamError) {
+    try {
+      return await fetchOpenclawStatusFromCliAsync();
+    } catch (cliError) {
+      const upstreamMessage = upstreamError?.message ? `; upstream status fetch failed: ${upstreamError.message}` : "";
+      cliError.message = `${cliError.message}${upstreamMessage}`;
+      throw cliError;
+    }
+  }
 }
 
 function buildStatusSnapshotEvent(payload, reason, fetchDurationMs) {
@@ -1225,7 +1416,18 @@ function taskStatsResponseBody(taskStats) {
       doing: taskStats.doing ?? 0,
       blocked: taskStats.blocked ?? 0,
       done: taskStats.done ?? 0,
-      taskList: taskStats.currentTask ? [taskStats.currentTask] : [],
+      taskList: taskStats.currentTask
+        ? [{
+            taskId: taskStats.currentTask.taskId || "",
+            title: taskStats.currentTask.title || "",
+            status: taskStats.currentTask.status || "",
+            progress: taskStats.currentTask.progress ?? 0,
+            updatedAt: taskStats.currentTask.updatedAt || "",
+            failureReason: taskStats.currentTask.failureReason || "",
+            lastError: taskStats.currentTask.lastError || "",
+            availableActions: Array.isArray(taskStats.currentTask.availableActions) ? taskStats.currentTask.availableActions : [],
+          }]
+        : [],
       page: 1,
       pageSize: taskStats.currentTask ? 1 : 0,
     },
@@ -1249,6 +1451,9 @@ function taskRuntimeResponseBody(taskRuntime) {
             startedAt: taskRuntime.currentTask.startedAt || "",
             progress: taskRuntime.currentTask.progress ?? 0,
             etaSeconds: taskRuntime.currentTask.etaSeconds ?? null,
+            failureReason: taskRuntime.currentTask.failureReason || "",
+            lastError: taskRuntime.currentTask.lastError || "",
+            availableActions: Array.isArray(taskRuntime.currentTask.availableActions) ? taskRuntime.currentTask.availableActions : [],
           }
         : null,
       nextTask: taskRuntime.nextTask
@@ -1395,6 +1600,43 @@ const server = http.createServer((req, res) => {
     }
 
     reply();
+    return;
+  }
+
+  const taskActionMatch = req.method === "POST"
+    ? url.pathname.match(/^\/api\/tasks\/([^/]+)\/(retry|resolve)$/)
+    : null;
+
+  if (taskActionMatch) {
+    const [, encodedTaskId, action] = taskActionMatch;
+    const taskId = decodeURIComponent(encodedTaskId);
+
+    postJsonToCandidates(getTaskActionCandidates(taskId, action), TASK_RUNTIME_TIMEOUT_MS, {})
+      .then(async (payload) => {
+        await refreshStatus(`task-${action}`, { force: true }).catch(() => null);
+        const [taskRuntime, taskStats] = await Promise.all([
+          fetchTaskRuntimeAsync().catch(() => null),
+          fetchTaskStatsAsync().catch(() => null),
+        ]);
+
+        sendJson(res, 200, {
+          ok: true,
+          data: {
+            action,
+            taskId,
+            upstream: payload?.data || payload || {},
+            runtime: taskRuntimeResponseBody(taskRuntime)?.data || null,
+            stats: taskStatsResponseBody(taskStats)?.data || null,
+          },
+        });
+      })
+      .catch((error) => {
+        sendJson(res, 502, {
+          ok: false,
+          error: "Failed to apply task action",
+          detail: error?.message || "Unknown error",
+        });
+      });
     return;
   }
 
