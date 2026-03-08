@@ -1,0 +1,35 @@
+{
+  "robot": {
+    "zone": "work",
+    "position": {
+      "x": 17,
+      "y": 7
+    },
+    "task": "抓取治具",
+    "description": "OpenClaw 正在工作区对齐抓取位，准备闭合夹爪并搬运到目标工位。",
+    "mode": "RUNNING",
+    "alertLevel": "GREEN",
+    "load": 64,
+    "battery": 87,
+    "temperature": 34,
+    "queue": 3,
+    "updatedAt": "2026-03-06T15:00:00+08:00"
+  },
+  "logs": [
+    {
+      "time": "2026-03-06T15:00:00+08:00",
+      "zone": "work",
+      "message": "夹爪视觉定位完成，开始微调到抓取角度。"
+    },
+    {
+      "time": "2026-03-06T14:59:48+08:00",
+      "zone": "work",
+      "message": "搬运任务单 #24 已入队，工作区路径保持畅通。"
+    },
+    {
+      "time": "2026-03-06T14:59:30+08:00",
+      "zone": "rest",
+      "message": "休息站充电桩已脱离，OpenClaw 离开待机位。"
+    }
+  ]
+}

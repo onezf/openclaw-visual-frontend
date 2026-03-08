@@ -1,0 +1,30 @@
+{
+  "robot": {
+    "zone": "rest",
+    "position": {
+      "x": 6,
+      "y": 13
+    },
+    "task": "夜间待机",
+    "description": "小龙虾回到休息区，正在卧室内待机充电并同步系统状态。",
+    "mode": "IDLE",
+    "alertLevel": "GREEN",
+    "load": 18,
+    "battery": 92,
+    "temperature": 29,
+    "queue": 0,
+    "updatedAt": "2026-03-07T10:58:00+08:00"
+  },
+  "logs": [
+    {
+      "time": "2026-03-07T10:58:00+08:00",
+      "zone": "rest",
+      "message": "休息区电源已接入，小龙虾进入待机充电。"
+    },
+    {
+      "time": "2026-03-07T10:57:41+08:00",
+      "zone": "rest",
+      "message": "卧室照明已切换为节能模式。"
+    }
+  ]
+}

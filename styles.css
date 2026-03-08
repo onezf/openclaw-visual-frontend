@@ -1,0 +1,1572 @@
+:root {
+  --bg-top: #16353c;
+  --bg-bottom: #071116;
+  --panel: rgba(9, 22, 27, 0.92);
+  --panel-border: #83b9b0;
+  --panel-shadow: rgba(0, 0, 0, 0.4);
+  --text-main: #f4f1cf;
+  --text-muted: #a7c0b3;
+  --lime: #d6ef73;
+  --mint: #79d2b3;
+  --blue: #8db8d1;
+  --amber: #f0c96f;
+  --red: #d65c4f;
+  --brown: #704d32;
+  --grass-light: #83d06b;
+  --grass-mid: #61b351;
+  --grass-dark: #477d3c;
+  --path-light: #f0deaa;
+  --path-mid: #ddc57d;
+  --path-dark: #b59959;
+  --water-light: #6fa9df;
+  --water-mid: #3c76b7;
+  --water-dark: #214d80;
+  --tree-light: #73973f;
+  --tree-mid: #587733;
+  --tree-dark: #3b5325;
+  --tile-size: 10px;
+  --tile-gap: 0px;
+  --tile-step: calc(var(--tile-size) + var(--tile-gap));
+  --map-width: 24;
+  --map-height: 18;
+  --zone-rest-top: 12;
+  --zone-side-offset: 2;
+  --zone-alarm-bottom: 4;
+  --robot-glow: rgba(214, 239, 115, 0.9);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--text-main);
+  font-family: "Avenir Next Condensed", "PingFang SC", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(86, 149, 129, 0.2), transparent 28%),
+    linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bottom) 68%);
+}
+
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+body::before {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.03) 50%, transparent 50%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 50%, transparent 50%);
+  background-size: 100% 6px, 6px 100%;
+  opacity: 0.18;
+}
+
+body::after {
+  background: radial-gradient(circle at 80% 15%, rgba(214, 239, 115, 0.08), transparent 25%);
+}
+
+.app-shell {
+  width: min(1500px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 16px 0 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 350px;
+  grid-template-areas: "main sidebar";
+  gap: 16px;
+  align-items: start;
+}
+
+.map-home {
+  grid-area: main;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.map-card {
+  display: flex;
+}
+
+.sidebar {
+  grid-area: sidebar;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.panel {
+  background: var(--panel);
+  border: 4px solid var(--panel-border);
+  box-shadow:
+    0 0 0 4px rgba(4, 8, 10, 0.72),
+    0 18px 44px var(--panel-shadow);
+  position: relative;
+}
+
+.panel::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 2px solid rgba(244, 241, 207, 0.12);
+  pointer-events: none;
+}
+
+.map-header,
+.sidebar-card,
+.map-card {
+  padding: 16px;
+}
+
+.eyebrow,
+.map-zone-label,
+.metric-box dt,
+.connection-list dt,
+.feed-item__zone {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--lime);
+}
+
+.map-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.map-header h1,
+.sidebar-card h2 {
+  margin: 8px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.map-header h1 {
+  font-size: clamp(1.8rem, 2.7vw, 3.5rem);
+  line-height: 0.94;
+}
+
+.map-header__copy,
+.brand-card__copy,
+.mission-card__summary,
+.connection-card__hint {
+  margin: 12px 0 0;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.zone-pills {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.zone-pill,
+.sync-badge {
+  padding: 9px 12px;
+  border: 3px solid currentColor;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+
+.zone-pill {
+  color: rgba(244, 241, 207, 0.65);
+}
+
+.zone-pill.is-active {
+  color: var(--text-main);
+  background: rgba(214, 239, 115, 0.14);
+}
+
+.zone-pill[data-zone="rest"].is-active {
+  border-color: #f0a85a;
+}
+
+.zone-pill[data-zone="work"].is-active {
+  border-color: #8ccbe3;
+}
+
+.zone-pill[data-zone="alarm"].is-active {
+  border-color: #ff8e6e;
+}
+
+.sidebar-card {
+  display: grid;
+  gap: 10px;
+}
+
+.sidebar-card--hero {
+  gap: 12px;
+}
+
+.sidebar-head {
+  display: grid;
+  gap: 12px;
+}
+
+.sidebar-head__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.sync-badge--offline {
+  color: #f59871;
+  background: rgba(214, 92, 79, 0.12);
+}
+
+.sync-badge--online {
+  color: var(--lime);
+  background: rgba(214, 239, 115, 0.14);
+}
+
+.sync-badge--syncing {
+  color: var(--amber);
+  background: rgba(240, 201, 111, 0.14);
+}
+
+.clock,
+.metric-box dd,
+.connection-list dd,
+.feed-item__time,
+.map-banner {
+  font-family: "Monaco", "Menlo", monospace;
+}
+
+.mission-card__task {
+  margin: -4px 0 0;
+  font-size: clamp(1.05rem, 1.7vw, 1.32rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.card-heading h2 {
+  margin: 6px 0 0;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.metric-box,
+.connection-list div,
+.feed-item {
+  padding: 12px;
+  background: rgba(6, 17, 20, 0.76);
+  border: 3px solid rgba(131, 185, 176, 0.22);
+}
+
+.metric-box dd,
+.connection-list dd {
+  margin: 8px 0 0;
+  font-size: 1.25rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+#alertValue[data-alert="GREEN"] {
+  color: #b7e17e;
+}
+
+#alertValue[data-alert="BLUE"] {
+  color: #8ccbe3;
+}
+
+#alertValue[data-alert="AMBER"] {
+  color: #ffd173;
+}
+
+#alertValue[data-alert="RED"] {
+  color: #ff8e6e;
+}
+
+.connection-list {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.connection-list dd {
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.map-screen {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: clamp(520px, 68vh, 760px);
+  padding: 8px;
+  background:
+    radial-gradient(circle at top, rgba(117, 158, 198, 0.18), transparent 30%),
+    linear-gradient(180deg, #202635 0%, #11151f 100%);
+  border: 4px solid rgba(4, 8, 10, 0.74);
+  overflow: hidden;
+}
+
+.map-scroller {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  padding: 8px 8px 96px;
+  background:
+    radial-gradient(circle at top, rgba(117, 158, 198, 0.14), transparent 30%),
+    linear-gradient(180deg, #202635 0%, #11151f 100%);
+}
+
+.map-world {
+  position: relative;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.map-grid {
+  display: block;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 5 / 4;
+  background:
+    radial-gradient(circle at top, rgba(120, 168, 232, 0.16), transparent 22%),
+    linear-gradient(180deg, #1f2737 0%, #0f1420 100%);
+  padding: 0;
+  border: 4px solid #241f1c;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.map-grid--phaser canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  image-rendering: pixelated;
+  filter: saturate(1.08) contrast(1.04);
+}
+
+.map-grid--phaser > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.tile {
+  width: var(--tile-size);
+  height: var(--tile-size);
+  position: relative;
+  overflow: visible;
+  image-rendering: pixelated;
+  box-shadow: none;
+}
+
+.tile--wall-panel {
+  background:
+    linear-gradient(180deg, #746557 0 16%, #564a40 16% 72%, #312b26 72% 100%);
+}
+
+.tile--partition {
+  background:
+    linear-gradient(90deg, #867566 0 22%, #685b4f 22% 78%, #473f38 78% 100%);
+}
+
+.tile--doorway {
+  background:
+    linear-gradient(180deg, #6f5748 0 18%, #b18c69 18% 100%);
+}
+
+.tile--threshold {
+  background:
+    linear-gradient(180deg, #dfc394 0 48%, #8d6847 48% 100%);
+}
+
+.tile--bedroom-floor {
+  background: #8e735d;
+}
+
+.tile--bedroom-floor-alt {
+  background: #846953;
+}
+
+.tile--work-floor-indoor {
+  background: #66707d;
+}
+
+.tile--work-floor-alt {
+  background: #59626e;
+}
+
+.tile--alarm-floor-indoor {
+  background: #4d4347;
+}
+
+.tile--alarm-floor-alt {
+  background: #43393d;
+}
+
+.tile--bed-head {
+  background:
+    linear-gradient(180deg, #6c4f3c 0 34%, #3e2d22 34% 100%);
+}
+
+.tile--bed-pillow {
+  background:
+    linear-gradient(90deg, #f5f0e4 0 48%, #e6dcc7 48% 100%);
+}
+
+.tile--bed-cover {
+  background:
+    linear-gradient(180deg, #7ca3d8 0 34%, #567cb0 34% 100%);
+}
+
+.tile--nightstand {
+  background:
+    linear-gradient(180deg, #845f42 0 30%, #5e402b 30% 100%);
+}
+
+.tile--bed-lamp {
+  background:
+    radial-gradient(circle at 50% 28%, #ffd88c 0 18%, transparent 19%),
+    linear-gradient(180deg, #7e664f 0 46%, #4b3a2d 46% 100%);
+}
+
+.tile--rug {
+  background:
+    linear-gradient(180deg, #c08b6f 0 18%, #985d45 18% 82%, #704030 82% 100%);
+}
+
+.tile--closet {
+  background:
+    linear-gradient(90deg, #8e7d67 0 22%, #d0bea0 22% 78%, #7c6a55 78% 100%);
+}
+
+.tile--shelf {
+  background:
+    repeating-linear-gradient(180deg, #8b755a 0 22%, #5e4e3e 22% 30%);
+}
+
+.tile--bedroom-label {
+  background:
+    linear-gradient(180deg, #866a57 0 28%, #edd8bb 28% 72%, #866a57 72% 100%);
+}
+
+.tile--monitor {
+  background:
+    linear-gradient(180deg, #f1f7ff 0 8%, transparent 8%),
+    linear-gradient(180deg, #1b2630 0 22%, #8cd2df 22% 74%, #394956 74% 100%);
+  box-shadow:
+    inset 0 -2px 0 rgba(20, 31, 38, 0.44),
+    0 3px 0 rgba(34, 47, 56, 0.32);
+}
+
+.tile--desk {
+  background:
+    linear-gradient(180deg, #9d7351 0 26%, #6f5038 26% 100%);
+}
+
+.tile--desk-top-3d {
+  background:
+    linear-gradient(180deg, #dfbc90 0 20%, #9c734e 20% 68%, #705238 68% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 241, 221, 0.2),
+    inset 0 -2px 0 rgba(72, 49, 31, 0.35);
+}
+
+.tile--desk-front-3d {
+  background:
+    linear-gradient(90deg, #8a6342 0 18%, #6c4d34 18% 82%, #543c2a 82% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 242, 226, 0.12),
+    inset -2px 0 0 rgba(44, 30, 20, 0.24);
+}
+
+.tile--chair {
+  background:
+    linear-gradient(180deg, #31475c 0 34%, #202f3d 34% 100%);
+}
+
+.tile--chair-office {
+  background:
+    linear-gradient(180deg, #4e647f 0 34%, #28394b 34% 72%, #16212b 72% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(208, 228, 255, 0.16),
+    0 2px 0 rgba(16, 24, 32, 0.24);
+}
+
+.tile--work-mat {
+  background:
+    linear-gradient(180deg, #29515a 0 18%, #1c363d 18% 100%);
+}
+
+.tile--dock {
+  background:
+    linear-gradient(180deg, #1d242d 0 18%, #6ac7cb 18% 62%, #32444e 62% 100%);
+}
+
+.tile--cabinet {
+  background:
+    linear-gradient(90deg, #7f8892 0 22%, #b6c0c7 22% 78%, #6b747d 78% 100%);
+}
+
+.tile--bookshelf-frame {
+  background:
+    linear-gradient(90deg, #6b4a33 0 18%, #8d6544 18% 82%, #5a3f2d 82% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 238, 211, 0.12),
+    inset -2px 0 0 rgba(62, 43, 29, 0.28);
+}
+
+.tile--bookshelf-books {
+  background:
+    linear-gradient(90deg, #294b74 0 18%, #c6534b 18% 36%, #f0d07d 36% 54%, #6ca75e 54% 72%, #8a65b5 72% 90%, #6b4a33 90% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 243, 221, 0.12),
+    inset 0 -2px 0 rgba(69, 48, 28, 0.28);
+}
+
+.tile--status-light {
+  background:
+    radial-gradient(circle at 50% 50%, #d5ffad 0 30%, #68ab4d 31% 100%);
+}
+
+.tile--work-shadow {
+  background:
+    linear-gradient(180deg, rgba(25, 35, 42, 0.18) 0 24%, rgba(13, 21, 28, 0.38) 24% 100%);
+}
+
+.tile--work-label {
+  background:
+    linear-gradient(180deg, #44505b 0 24%, #f0e5bb 24% 76%, #44505b 76% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 247, 226, 0.18),
+    inset 0 -2px 0 rgba(41, 49, 55, 0.26);
+}
+
+.tile--alert-console {
+  background:
+    linear-gradient(180deg, #2d2f39 0 26%, #16181f 26% 100%);
+}
+
+.tile--alert-screen {
+  background:
+    linear-gradient(180deg, #1e2630 0 18%, #9dd0ef 18% 62%, #2f4351 62% 100%);
+}
+
+.tile--alarm-cabinet {
+  background:
+    linear-gradient(90deg, #75666a 0 22%, #b09ba2 22% 78%, #64565b 78% 100%);
+}
+
+.tile--alert-light {
+  background:
+    linear-gradient(180deg, #5f5554 0 18%, #2c2526 18% 100%);
+  box-shadow: inset 0 0 0 2px rgba(250, 243, 225, 0.08);
+}
+
+.tile--alert-light.is-active {
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 244, 205, 0.3),
+    0 0 20px rgba(255, 154, 92, 0.28);
+}
+
+.tile--alert-light.is-active[data-alert="AMBER"] {
+  background:
+    radial-gradient(circle at 50% 50%, #ffe7a0 0 34%, #ffb14f 35% 100%);
+}
+
+.tile--alert-light.is-active[data-alert="RED"] {
+  background:
+    radial-gradient(circle at 50% 50%, #ffd6c7 0 28%, #ff7d62 29% 100%);
+}
+
+.tile--alert-pole {
+  background:
+    linear-gradient(180deg, #c6cbd1 0 18%, #f25f4e 18% 52%, #2f3941 52% 100%);
+}
+
+.tile--alarm-label {
+  background:
+    linear-gradient(180deg, #5f4f52 0 28%, #ffd0c2 28% 72%, #5f4f52 72% 100%);
+}
+
+.tile--grass {
+  background: #6fbe5a;
+}
+
+.tile--grass-alt {
+  background: #66b352;
+}
+
+.tile--tree {
+  background:
+    radial-gradient(circle at 50% 28%, #7fa34c 0 20%, transparent 21%),
+    radial-gradient(circle at 28% 44%, #61813a 0 20%, transparent 21%),
+    radial-gradient(circle at 72% 44%, #5a7835 0 20%, transparent 21%),
+    linear-gradient(180deg, transparent 0 62%, #6e4d2f 62% 82%, #3d2519 82% 100%),
+    linear-gradient(180deg, #6b8e3d 0 68%, #425c28 68% 100%);
+}
+
+.tile--flower {
+  background:
+    radial-gradient(circle at 22% 24%, #ffd572 0 10%, transparent 11%),
+    radial-gradient(circle at 52% 46%, #ff7aa3 0 12%, transparent 13%),
+    radial-gradient(circle at 74% 28%, #f4f0dc 0 8%, transparent 9%),
+    radial-gradient(circle at 70% 72%, #e982b4 0 10%, transparent 11%),
+    linear-gradient(180deg, #7acb65 0 28%, #5daa4e 28% 100%);
+}
+
+.tile--pond {
+  background:
+    radial-gradient(circle at 28% 26%, rgba(176, 222, 255, 0.24) 0 8%, transparent 9%),
+    linear-gradient(180deg, #6298d0 0 14%, #4577b4 14% 100%);
+}
+
+.tile--path {
+  background:
+    linear-gradient(180deg, #f0dfae 0 16%, #deca90 16% 84%, #c7af6e 84% 100%);
+}
+
+.tile--shadow-grass {
+  background:
+    linear-gradient(180deg, #5d9a53 0 24%, #44783d 24% 100%);
+}
+
+.tile--roof-rest {
+  background:
+    linear-gradient(180deg, #fff4da 0 8%, #ef8d30 8% 100%);
+}
+
+.tile--roof-work {
+  background:
+    linear-gradient(180deg, #eff7ff 0 8%, #5b99df 8% 100%);
+}
+
+.tile--work-facade-shadow {
+  background:
+    linear-gradient(180deg, #2d4665 0 20%, #1c2a3b 20% 100%);
+}
+
+.tile--roof-alert {
+  background:
+    linear-gradient(180deg, #fbe3b1 0 8%, #ad7333 8% 100%);
+}
+
+.tile--roof-hall {
+  background:
+    linear-gradient(180deg, #f2ddbc 0 8%, #92673a 8% 100%);
+}
+
+.tile--roof-market {
+  background:
+    linear-gradient(180deg, #f3fbff 0 8%, #59a2eb 8% 100%);
+}
+
+.tile--roof-center {
+  background:
+    linear-gradient(180deg, #fff0d7 0 8%, #f08f2b 8% 100%);
+}
+
+.tile--roof-grey {
+  background:
+    linear-gradient(180deg, #f3f6f8 0 8%, #8d9ea6 8% 100%);
+}
+
+.tile--awning-teal {
+  background:
+    linear-gradient(180deg, #d8f5e9 0 18%, #3fa78d 18% 52%, #236f60 52% 100%);
+}
+
+.tile--work-awning {
+  background:
+    repeating-linear-gradient(90deg, #eef6f1 0 18%, #3da08a 18% 38%, #1f6e63 38% 56%),
+    linear-gradient(180deg, #effaf5 0 18%, transparent 18% 100%);
+  box-shadow:
+    inset 0 -2px 0 rgba(14, 32, 31, 0.34),
+    inset 0 2px 0 rgba(255, 255, 255, 0.16);
+}
+
+.tile--wall {
+  background:
+    linear-gradient(90deg, #dac9a1 0 12%, #f2e8c8 12% 88%, #c4b182 88% 100%),
+    linear-gradient(180deg, #f4edd3 0 54%, #cab98d 54% 100%);
+}
+
+.tile--work-wall-side {
+  background:
+    linear-gradient(90deg, #a58b62 0 20%, #e7dbb9 20% 78%, #8a714f 78% 100%),
+    linear-gradient(180deg, #efe5ca 0 62%, #c1ad81 62% 100%);
+  box-shadow:
+    inset 2px 0 0 rgba(255, 255, 255, 0.08),
+    inset -2px 0 0 rgba(70, 56, 39, 0.2);
+}
+
+.tile--window {
+  background:
+    linear-gradient(90deg, #e8dcc0 0 18%, #7bc2ff 18% 82%, #b8a37e 82% 100%),
+    linear-gradient(180deg, #f0e4c8 0 24%, #9dd7ff 24% 68%, #6c8fa3 68% 76%, #cab793 76% 100%);
+}
+
+.tile--work-window-frame {
+  background:
+    linear-gradient(90deg, #7e6847 0 16%, #f0ebd2 16% 26%, #7fd0ff 26% 74%, #f0ebd2 74% 84%, #7e6847 84% 100%),
+    linear-gradient(180deg, #f7f0d8 0 18%, #9fdcff 18% 66%, #5d83a7 66% 74%, #d9c49d 74% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -2px 0 rgba(84, 66, 43, 0.22);
+}
+
+.tile--work-signboard {
+  background:
+    linear-gradient(180deg, #f5e7ad 0 14%, transparent 14% 100%),
+    linear-gradient(90deg, #1d3446 0 10%, #274d63 10% 90%, #173040 90% 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 242, 201, 0.26),
+    inset 0 -2px 0 rgba(9, 20, 26, 0.32);
+}
+
+.tile--door {
+  background:
+    linear-gradient(90deg, #d8c59f 0 22%, #805533 22% 78%, #5f3d25 78% 100%),
+    linear-gradient(180deg, #f2e7c6 0 20%, #8d6134 20% 100%);
+}
+
+.tile--work-door-shadow {
+  background:
+    linear-gradient(90deg, #f1e4c2 0 12%, #6f4e33 12% 88%, #4f351f 88% 100%),
+    linear-gradient(180deg, #c79657 0 12%, #765233 12% 86%, #352316 86% 100%);
+  box-shadow:
+    inset 3px 0 0 rgba(255, 244, 214, 0.14),
+    inset -3px 0 0 rgba(20, 12, 8, 0.28),
+    inset 0 -3px 0 rgba(17, 11, 8, 0.26);
+}
+
+.tile--charger {
+  background:
+    linear-gradient(180deg, #24323b 0 24%, #84d7cf 24% 66%, #31515b 66% 100%);
+}
+
+.tile--bench {
+  background:
+    linear-gradient(180deg, transparent 0 26%, #8e5c33 26% 40%, transparent 40% 52%, #6d4325 52% 62%, transparent 62% 100%),
+    linear-gradient(90deg, transparent 0 18%, #5a3922 18% 24%, transparent 24% 76%, #5a3922 76% 82%, transparent 82% 100%),
+    linear-gradient(180deg, #8dbe69 0 36%, #6eab57 36% 100%);
+}
+
+.tile--sign {
+  background:
+    linear-gradient(180deg, transparent 0 18%, #f1e3b2 18% 50%, transparent 50% 100%),
+    linear-gradient(90deg, transparent 0 42%, #6b462f 42% 52%, transparent 52% 100%),
+    linear-gradient(180deg, #77c964 0 58%, #5aa94e 58% 100%);
+}
+
+.tile--mailbox {
+  background:
+    linear-gradient(180deg, transparent 0 16%, #f76841 16% 52%, transparent 52% 100%),
+    linear-gradient(90deg, transparent 0 26%, #b33927 26% 74%, transparent 74% 100%),
+    linear-gradient(90deg, transparent 0 44%, #6d4026 44% 54%, transparent 54% 100%),
+    linear-gradient(180deg, #7ecb6b 0 48%, #60ad53 48% 100%);
+}
+
+.tile--work-floor {
+  background:
+    linear-gradient(180deg, #c1cbcf 0 40%, #8e999d 40% 100%);
+}
+
+.tile--machine {
+  background:
+    linear-gradient(180deg, #22313b 0 22%, #87d3d0 22% 64%, #415e68 64% 100%);
+}
+
+.tile--conveyor {
+  background:
+    repeating-linear-gradient(90deg, #2e3940 0 18%, #a0adb2 18% 36%);
+}
+
+.tile--crate {
+  background:
+    repeating-linear-gradient(90deg, #d29645 0 48%, #ab6d2e 48% 52%);
+}
+
+.tile--alarm-floor {
+  background:
+    linear-gradient(180deg, #b89e9d 0 35%, #947674 35% 100%);
+}
+
+.tile--hazard {
+  background:
+    repeating-linear-gradient(135deg, #ffd173 0 24%, #cf584a 24% 48%);
+}
+
+.tile--fence {
+  background:
+    linear-gradient(90deg, transparent 0 14%, #ecf2eb 14% 24%, transparent 24% 50%, #ecf2eb 50% 60%, transparent 60% 86%, #d9dfd5 86% 96%, transparent 96%),
+    linear-gradient(180deg, transparent 0 18%, #f7fbf5 18% 28%, transparent 28% 72%, #dbe4d8 72% 82%, transparent 82%),
+    linear-gradient(180deg, #88d173 0 34%, #63b05a 34% 100%);
+}
+
+.tile--fence-white {
+  background:
+    linear-gradient(90deg, transparent 0 14%, #edf4ec 14% 24%, transparent 24% 50%, #edf4ec 50% 60%, transparent 60% 86%, #d8e0d6 86% 96%, transparent 96%),
+    linear-gradient(180deg, transparent 0 18%, #fafdfa 18% 28%, transparent 28% 72%, #dce5dc 72% 82%, transparent 82%),
+    linear-gradient(180deg, #86cd73 0 34%, #61ae58 34% 100%);
+}
+
+.tile--gate {
+  background:
+    linear-gradient(90deg, #e9efea 0 10%, transparent 10% 90%, #d6ded5 90% 100%),
+    linear-gradient(180deg, #f3d68e 0 40%, #d2b86a 40% 100%);
+}
+
+.tile--beacon {
+  background:
+    radial-gradient(circle at 50% 28%, #ffd173 0 15%, transparent 16%),
+    linear-gradient(180deg, #d65c4f 0 55%, #7d2b2b 55% 100%);
+}
+
+.tile--rock {
+  background:
+    radial-gradient(circle at 38% 26%, rgba(216, 235, 255, 0.34) 0 8%, transparent 9%),
+    radial-gradient(circle at 52% 54%, #66798a 0 24%, #475766 24% 38%, transparent 39%),
+    linear-gradient(180deg, var(--water-light) 0 22%, var(--water-mid) 22% 72%, var(--water-dark) 72% 100%);
+}
+
+:is(.tile--lamp-top, .tile--lamp-post, .tile--lamp-base) {
+  background:
+    radial-gradient(circle at 24% 26%, rgba(255, 243, 204, 0.48) 0 8%, transparent 9%),
+    radial-gradient(circle at 74% 68%, rgba(155, 122, 68, 0.2) 0 10%, transparent 11%),
+    linear-gradient(180deg, var(--path-light) 0 24%, var(--path-mid) 24% 72%, var(--path-dark) 72% 100%);
+}
+
+.tile--lamp-top::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  top: 18%;
+  width: 64%;
+  height: 42%;
+  border-radius: 44% 44% 36% 36%;
+  background: radial-gradient(circle at 50% 40%, #ffefb9 0 28%, #3d4a50 29% 100%);
+  box-shadow: 0 0 0 1px rgba(23, 30, 32, 0.46);
+}
+
+.tile--lamp-post::after,
+.tile--lamp-base::after {
+  content: "";
+  position: absolute;
+  left: 44%;
+  width: 12%;
+  background: #394145;
+}
+
+.tile--lamp-post::after {
+  top: 0;
+  height: 100%;
+}
+
+.tile--lamp-base::before {
+  content: "";
+  position: absolute;
+  left: 26%;
+  bottom: 10%;
+  width: 48%;
+  height: 18%;
+  background: rgba(27, 33, 21, 0.34);
+  border-radius: 50%;
+}
+
+.tile--lamp-base::after {
+  top: 0;
+  height: 60%;
+}
+
+:is(
+  .tile--npc-a-head,
+  .tile--npc-a-body,
+  .tile--npc-a-shadow,
+  .tile--npc-b-head,
+  .tile--npc-b-body,
+  .tile--npc-b-shadow,
+  .tile--npc-c-head,
+  .tile--npc-c-body,
+  .tile--npc-c-shadow,
+  .tile--npc-d-head,
+  .tile--npc-d-body,
+  .tile--npc-d-shadow
+) {
+  background:
+    radial-gradient(circle at 24% 26%, rgba(255, 243, 204, 0.48) 0 8%, transparent 9%),
+    radial-gradient(circle at 74% 68%, rgba(155, 122, 68, 0.2) 0 10%, transparent 11%),
+    linear-gradient(180deg, var(--path-light) 0 24%, var(--path-mid) 24% 72%, var(--path-dark) 72% 100%);
+}
+
+.tile--npc-a-head,
+.tile--npc-a-body,
+.tile--npc-a-shadow {
+  --npc-hair: #6a3d2d;
+  --npc-outfit: #db7356;
+  --npc-accent: #f2df98;
+}
+
+.tile--npc-b-head,
+.tile--npc-b-body,
+.tile--npc-b-shadow {
+  --npc-hair: #23426d;
+  --npc-outfit: #447bc5;
+  --npc-accent: #f0d98f;
+}
+
+.tile--npc-c-head,
+.tile--npc-c-body,
+.tile--npc-c-shadow {
+  --npc-hair: #5e6f32;
+  --npc-outfit: #79b94d;
+  --npc-accent: #f0ecc7;
+}
+
+.tile--npc-d-head,
+.tile--npc-d-body,
+.tile--npc-d-shadow {
+  --npc-hair: #343434;
+  --npc-outfit: #d38bb1;
+  --npc-accent: #f7e4ba;
+}
+
+:is(.tile--npc-a-head, .tile--npc-b-head, .tile--npc-c-head, .tile--npc-d-head)::after {
+  content: "";
+  position: absolute;
+  left: 26%;
+  top: 8%;
+  width: 48%;
+  height: 62%;
+  border-radius: 36% 36% 42% 42%;
+  background:
+    radial-gradient(circle at 50% 64%, #f4cfab 0 34%, transparent 35%),
+    linear-gradient(180deg, var(--npc-hair) 0 34%, #f4cfab 34% 100%);
+  box-shadow: 0 0 0 1px rgba(54, 39, 28, 0.16);
+}
+
+:is(.tile--npc-a-body, .tile--npc-b-body, .tile--npc-c-body, .tile--npc-d-body)::after {
+  content: "";
+  position: absolute;
+  left: 24%;
+  top: 4%;
+  width: 52%;
+  height: 76%;
+  border-radius: 24% 24% 18% 18%;
+  background:
+    linear-gradient(180deg, var(--npc-accent) 0 18%, var(--npc-outfit) 18% 74%, #424a51 74% 100%);
+  box-shadow: 0 0 0 1px rgba(44, 41, 38, 0.16);
+}
+
+:is(.tile--npc-a-shadow, .tile--npc-b-shadow, .tile--npc-c-shadow, .tile--npc-d-shadow)::before {
+  content: "";
+  position: absolute;
+  left: 22%;
+  bottom: 12%;
+  width: 56%;
+  height: 18%;
+  border-radius: 50%;
+  background: rgba(27, 33, 21, 0.34);
+}
+
+:is(.tile--npc-a-shadow, .tile--npc-b-shadow, .tile--npc-c-shadow, .tile--npc-d-shadow)::after {
+  content: "";
+  position: absolute;
+  left: 34%;
+  top: 8%;
+  width: 32%;
+  height: 44%;
+  border-radius: 18%;
+  background: linear-gradient(180deg, var(--npc-outfit) 0 58%, #3c474d 58% 100%);
+}
+
+.tile--robot {
+  z-index: 7;
+  border-radius: 18%;
+  box-shadow:
+    0 0 0 2px rgba(13, 21, 24, 0.88),
+    0 0 0 5px var(--robot-glow),
+    0 0 18px 2px var(--robot-glow);
+}
+
+.tile--robot::before,
+.tile--robot::after {
+  content: none;
+}
+
+.robot-sprite {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--tile-size) * 0.18);
+  width: 11em;
+  height: 15em;
+  transform: translateX(-50%);
+  font-size: max(2px, calc(var(--tile-size) * 0.42));
+  pointer-events: none;
+  z-index: 4;
+  --trainer-outline: #17202b;
+  --trainer-hat: #de5b4d;
+  --trainer-hat-light: #f08f7c;
+  --trainer-brim: #f1df9f;
+  --trainer-skin: #f2d0ad;
+  --trainer-hair: #4d2c20;
+  --trainer-jacket: #284a74;
+  --trainer-shirt: #679ddd;
+  --trainer-bag: #d7b265;
+  --trainer-pants: #223148;
+  --trainer-shoes: #563627;
+}
+
+.robot-sprite::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1em;
+  height: 1em;
+  background: transparent;
+  box-shadow:
+    3em 0 0 0 var(--trainer-outline),
+    4em 0 0 0 var(--trainer-outline),
+    5em 0 0 0 var(--trainer-outline),
+    6em 0 0 0 var(--trainer-outline),
+    7em 0 0 0 var(--trainer-outline),
+    2em 1em 0 0 var(--trainer-outline),
+    3em 1em 0 0 var(--trainer-hat-light),
+    4em 1em 0 0 var(--trainer-hat),
+    5em 1em 0 0 var(--trainer-hat),
+    6em 1em 0 0 var(--trainer-hat),
+    7em 1em 0 0 var(--trainer-hat-light),
+    8em 1em 0 0 var(--trainer-outline),
+    2em 2em 0 0 var(--trainer-outline),
+    3em 2em 0 0 var(--trainer-hat),
+    4em 2em 0 0 var(--trainer-hat),
+    5em 2em 0 0 var(--trainer-hat),
+    6em 2em 0 0 var(--trainer-hat),
+    7em 2em 0 0 var(--trainer-hat),
+    8em 2em 0 0 var(--trainer-outline),
+    2em 3em 0 0 var(--trainer-outline),
+    3em 3em 0 0 var(--trainer-hat),
+    4em 3em 0 0 var(--trainer-brim),
+    5em 3em 0 0 var(--trainer-brim),
+    6em 3em 0 0 var(--trainer-brim),
+    7em 3em 0 0 var(--trainer-hat),
+    8em 3em 0 0 var(--trainer-outline),
+    2em 4em 0 0 var(--trainer-outline),
+    3em 4em 0 0 var(--trainer-hair),
+    4em 4em 0 0 var(--trainer-skin),
+    5em 4em 0 0 var(--trainer-skin),
+    6em 4em 0 0 var(--trainer-skin),
+    7em 4em 0 0 var(--trainer-hair),
+    8em 4em 0 0 var(--trainer-outline),
+    2em 5em 0 0 var(--trainer-outline),
+    3em 5em 0 0 var(--trainer-hair),
+    4em 5em 0 0 var(--trainer-skin),
+    5em 5em 0 0 var(--trainer-skin),
+    6em 5em 0 0 var(--trainer-skin),
+    7em 5em 0 0 var(--trainer-hair),
+    8em 5em 0 0 var(--trainer-outline),
+    2em 6em 0 0 var(--trainer-outline),
+    3em 6em 0 0 var(--trainer-bag),
+    4em 6em 0 0 var(--trainer-jacket),
+    5em 6em 0 0 var(--trainer-shirt),
+    6em 6em 0 0 var(--trainer-jacket),
+    7em 6em 0 0 var(--trainer-bag),
+    8em 6em 0 0 var(--trainer-outline),
+    1em 7em 0 0 var(--trainer-outline),
+    2em 7em 0 0 var(--trainer-bag),
+    3em 7em 0 0 var(--trainer-jacket),
+    4em 7em 0 0 var(--trainer-shirt),
+    5em 7em 0 0 var(--trainer-shirt),
+    6em 7em 0 0 var(--trainer-shirt),
+    7em 7em 0 0 var(--trainer-jacket),
+    8em 7em 0 0 var(--trainer-bag),
+    9em 7em 0 0 var(--trainer-outline),
+    1em 8em 0 0 var(--trainer-outline),
+    2em 8em 0 0 var(--trainer-bag),
+    3em 8em 0 0 var(--trainer-shirt),
+    4em 8em 0 0 var(--trainer-shirt),
+    5em 8em 0 0 var(--trainer-jacket),
+    6em 8em 0 0 var(--trainer-shirt),
+    7em 8em 0 0 var(--trainer-shirt),
+    8em 8em 0 0 var(--trainer-bag),
+    9em 8em 0 0 var(--trainer-outline),
+    2em 9em 0 0 var(--trainer-outline),
+    3em 9em 0 0 var(--trainer-shirt),
+    4em 9em 0 0 var(--trainer-shirt),
+    5em 9em 0 0 var(--trainer-jacket),
+    6em 9em 0 0 var(--trainer-shirt),
+    7em 9em 0 0 var(--trainer-shirt),
+    8em 9em 0 0 var(--trainer-outline),
+    2em 10em 0 0 var(--trainer-outline),
+    3em 10em 0 0 var(--trainer-skin),
+    4em 10em 0 0 var(--trainer-pants),
+    5em 10em 0 0 var(--trainer-pants),
+    6em 10em 0 0 var(--trainer-pants),
+    7em 10em 0 0 var(--trainer-skin),
+    8em 10em 0 0 var(--trainer-outline),
+    1em 11em 0 0 var(--trainer-outline),
+    2em 11em 0 0 var(--trainer-pants),
+    3em 11em 0 0 var(--trainer-pants),
+    4em 11em 0 0 var(--trainer-pants),
+    5em 11em 0 0 var(--trainer-pants),
+    6em 11em 0 0 var(--trainer-pants),
+    7em 11em 0 0 var(--trainer-pants),
+    8em 11em 0 0 var(--trainer-pants),
+    9em 11em 0 0 var(--trainer-outline),
+    1em 12em 0 0 var(--trainer-outline),
+    2em 12em 0 0 var(--trainer-pants),
+    3em 12em 0 0 var(--trainer-pants),
+    4em 12em 0 0 var(--trainer-pants),
+    5em 12em 0 0 var(--trainer-pants),
+    6em 12em 0 0 var(--trainer-pants),
+    7em 12em 0 0 var(--trainer-pants),
+    8em 12em 0 0 var(--trainer-pants),
+    9em 12em 0 0 var(--trainer-outline),
+    2em 13em 0 0 var(--trainer-outline),
+    3em 13em 0 0 var(--trainer-shoes),
+    4em 13em 0 0 var(--trainer-pants),
+    6em 13em 0 0 var(--trainer-pants),
+    7em 13em 0 0 var(--trainer-shoes),
+    8em 13em 0 0 var(--trainer-outline),
+    3em 14em 0 0 var(--trainer-outline),
+    4em 14em 0 0 var(--trainer-shoes),
+    6em 14em 0 0 var(--trainer-shoes),
+    7em 14em 0 0 var(--trainer-outline);
+  filter: drop-shadow(0 0 0.45em rgba(20, 29, 34, 0.38));
+}
+
+.robot-sprite::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -1.2em;
+  width: 7.4em;
+  height: 2em;
+  transform: translateX(-50%);
+  background: rgba(16, 23, 20, 0.34);
+  border-radius: 50%;
+}
+
+.robot-label {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--tile-size) * 5.2);
+  transform: translateX(-50%);
+  min-width: calc(var(--tile-size) * 3.8);
+  padding: 2px 5px;
+  border: 2px solid rgba(20, 28, 30, 0.92);
+  background: rgba(244, 241, 207, 0.96);
+  color: #17343a;
+  font-size: max(10px, calc(var(--tile-size) * 0.76));
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow:
+    0 3px 0 rgba(10, 18, 20, 0.28),
+    0 0 0 2px var(--robot-glow);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.tile--robot-active {
+  filter: saturate(1.14) brightness(1.05);
+}
+
+.map-zone-label {
+  display: none;
+}
+
+.map-banner {
+  padding: 10px 12px;
+  background: rgba(6, 17, 20, 0.9);
+  border: 2px solid rgba(131, 185, 176, 0.24);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-size: 0.92rem;
+}
+
+.map-bottom {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: grid;
+  gap: 6px;
+  z-index: 3;
+}
+
+.map-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  color: var(--text-muted);
+  background: rgba(6, 17, 20, 0.9);
+  border: 2px solid rgba(131, 185, 176, 0.24);
+}
+
+.map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-chip {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(5, 10, 12, 0.85);
+}
+
+.legend-chip--rest {
+  background: #ef9132;
+}
+
+.legend-chip--work {
+  background: #9da8b0;
+}
+
+.legend-chip--alarm {
+  background: #b08b8b;
+}
+
+.legend-chip--robot {
+  background: #6ed4c2;
+  box-shadow: 0 0 0 2px rgba(214, 239, 115, 0.55);
+}
+
+.feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.feed-item__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.feed-item__zone {
+  padding: 4px 8px;
+  border: 2px solid currentColor;
+}
+
+.feed-item__zone[data-tone="rest"] {
+  color: #c4e48b;
+}
+
+.feed-item__zone[data-tone="work"] {
+  color: #8ccbe3;
+}
+
+.feed-item__zone[data-tone="alarm"] {
+  color: #ff9a77;
+}
+
+.feed-item__zone[data-tone="system"] {
+  color: #c0d3d1;
+}
+
+.feed-item__message {
+  margin: 10px 0 0;
+  line-height: 1.45;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ops-card {
+  gap: 10px;
+}
+
+.ops-card__block {
+  display: grid;
+  gap: 8px;
+}
+
+.ops-card__subhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ops-card__block--status {
+  gap: 8px;
+}
+
+.ops-card__block--logs {
+  min-height: 0;
+}
+
+.interface-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: rgba(6, 17, 20, 0.76);
+  border: 3px solid rgba(131, 185, 176, 0.22);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.interface-status__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #f59871;
+  box-shadow: 0 0 0 3px rgba(245, 152, 113, 0.18);
+}
+
+.interface-status[data-state="online"] .interface-status__dot {
+  background: #b7e17e;
+  box-shadow: 0 0 0 3px rgba(183, 225, 126, 0.18);
+}
+
+.interface-status[data-state="syncing"] .interface-status__dot {
+  background: #ffd173;
+  box-shadow: 0 0 0 3px rgba(255, 209, 115, 0.18);
+}
+
+#mapHome[data-zone="rest"] .map-card {
+  box-shadow:
+    0 0 0 4px rgba(4, 8, 10, 0.72),
+    0 18px 44px rgba(188, 148, 94, 0.18);
+}
+
+#mapHome[data-zone="work"] .map-card {
+  box-shadow:
+    0 0 0 4px rgba(4, 8, 10, 0.72),
+    0 18px 44px rgba(85, 155, 198, 0.18);
+}
+
+#mapHome[data-zone="alarm"] .map-card {
+  box-shadow:
+    0 0 0 4px rgba(4, 8, 10, 0.72),
+    0 18px 44px rgba(214, 92, 79, 0.18);
+}
+
+@media (min-width: 1181px) {
+  .app-shell {
+    min-height: calc(100vh - 32px);
+  }
+
+  .map-home {
+    min-height: calc(100vh - 32px);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .map-card,
+  .map-screen,
+  .sidebar {
+    min-height: 0;
+  }
+
+  .map-card {
+    padding: 12px;
+  }
+
+  .map-header {
+    padding: 14px 16px;
+  }
+
+  .sidebar {
+    min-height: calc(100vh - 32px);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .ops-card {
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .feed-list {
+    max-height: none;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .mission-card__summary {
+    display: none;
+  }
+
+  .connection-card__hint {
+    display: none;
+  }
+
+  .sidebar-card {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .ops-card__block + .ops-card__block {
+    padding-top: 4px;
+    border-top: 2px solid rgba(131, 185, 176, 0.18);
+  }
+
+  .mission-card__task {
+    font-size: 0.96rem;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .metric-box,
+  .connection-list div,
+  .feed-item {
+    padding: 8px;
+  }
+
+  .metric-box dt,
+  .feed-item__zone {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+  }
+
+  .metric-box dd {
+    font-size: 0.92rem;
+  }
+
+  .feed-item__message {
+    margin-top: 4px;
+    font-size: 0.82rem;
+    -webkit-line-clamp: 3;
+  }
+
+  .feed-item__time {
+    font-size: 0.78rem;
+  }
+
+  .sidebar-card h2 {
+    font-size: 1.55rem;
+  }
+
+  .clock {
+    font-size: 0.9rem;
+  }
+
+  .interface-status {
+    padding: 8px 10px;
+    font-size: 0.94rem;
+  }
+}
+
+@media (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "main"
+      "sidebar";
+  }
+
+  .map-header {
+    grid-template-columns: 1fr;
+  }
+
+  .zone-pills {
+    justify-content: start;
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --tile-size: 6px;
+    --tile-gap: 1px;
+  }
+
+  .app-shell {
+    width: min(100% - 18px, 1500px);
+    padding-top: 14px;
+  }
+
+  .map-header,
+  .sidebar-card,
+  .map-card {
+    padding: 16px;
+  }
+
+  .map-screen {
+    min-height: 420px;
+    padding: 8px;
+  }
+
+  .map-scroller {
+    padding: 10px 10px 106px;
+  }
+
+  .map-grid {
+    aspect-ratio: 1 / 1;
+  }
+
+  .sidebar-head__meta {
+    flex-wrap: wrap;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .map-zone-label {
+    font-size: 0.68rem;
+    letter-spacing: 0.14em;
+    padding: 6px 8px;
+  }
+
+  .map-bottom {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    gap: 6px;
+  }
+
+  .map-banner,
+  .map-legend {
+    padding: 8px 10px;
+    font-size: 0.78rem;
+  }
+}

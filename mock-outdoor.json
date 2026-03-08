@@ -1,0 +1,31 @@
+{
+  "robot": {
+    "zone": "rest",
+    "scene": "outdoor",
+    "idleActivity": "walk_dog",
+    "position": {
+      "x": 8,
+      "y": 16
+    },
+    "description": "小龙虾当前没有排队任务，正在室外遛狗放风。",
+    "mode": "IDLE",
+    "alertLevel": "GREEN",
+    "load": 8,
+    "battery": 91,
+    "temperature": 28,
+    "queue": 0,
+    "updatedAt": "2026-03-07T15:20:00+08:00"
+  },
+  "logs": [
+    {
+      "time": "2026-03-07T15:20:00+08:00",
+      "zone": "rest",
+      "message": "任务列表为空，小龙虾开始外出散步。"
+    },
+    {
+      "time": "2026-03-07T15:19:46+08:00",
+      "zone": "rest",
+      "message": "休息区保持待命，室外总览开始巡游。"
+    }
+  ]
+}

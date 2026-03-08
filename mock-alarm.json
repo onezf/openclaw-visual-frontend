@@ -1,0 +1,30 @@
+{
+  "robot": {
+    "zone": "alarm",
+    "position": {
+      "x": 21,
+      "y": 10
+    },
+    "task": "风险复核",
+    "description": "小龙虾进入警报区，对当前告警事件做复核与联动处置。",
+    "mode": "RUNNING",
+    "alertLevel": "RED",
+    "load": 76,
+    "battery": 78,
+    "temperature": 47,
+    "queue": 2,
+    "updatedAt": "2026-03-07T10:58:00+08:00"
+  },
+  "logs": [
+    {
+      "time": "2026-03-07T10:58:00+08:00",
+      "zone": "alarm",
+      "message": "警报区主告警已触发，控制台进入联动状态。"
+    },
+    {
+      "time": "2026-03-07T10:57:48+08:00",
+      "zone": "alarm",
+      "message": "风险复核任务已被小龙虾接管。"
+    }
+  ]
+}

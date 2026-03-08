@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小龙虾像素分区页</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23081314'/%3E%3Crect x='1' y='1' width='14' height='14' fill='%2385b7af'/%3E%3Crect x='3' y='3' width='10' height='3' fill='%23f4f1cf'/%3E%3Crect x='3' y='7' width='10' height='6' fill='%23d65c4f'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./openclaw.config.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <main class="map-home" id="mapHome" data-zone="none">
+      <header class="map-header panel">
+        <div>
+          <p class="eyebrow">OPENCLAW 像素地图</p>
+          <h1>小龙虾的牛马日记</h1>
+          <p class="map-header__copy">
+            有任务时主视图会先显示室外总览，再切进 Phaser 室内像素图。
+            如果后端返回休息区且 scene=outdoor，小龙虾会留在室外闲逛；进入工作区会显示办公室，进入警报区会显示控制室。
+          </p>
+        </div>
+        <div class="zone-pills">
+          <span class="zone-pill" data-zone="rest">休息区</span>
+          <span class="zone-pill" data-zone="work">工作区</span>
+          <span class="zone-pill" data-zone="alarm">警报区</span>
+        </div>
+      </header>
+
+      <section class="map-card panel">
+        <div class="map-screen">
+          <div class="map-scroller">
+            <div class="map-world">
+              <div class="map-grid map-grid--phaser" id="mapGrid" aria-label="小龙虾休息区工作区警报区像素地图"></div>
+            </div>
+          </div>
+
+          <div class="map-bottom">
+            <div class="map-banner" id="mapBanner">
+              等待状态返回，小龙虾将按真实位置落点。
+            </div>
+
+            <div class="map-legend">
+              <span><i class="legend-chip legend-chip--rest"></i>休息区</span>
+              <span><i class="legend-chip legend-chip--work"></i>工作区</span>
+              <span><i class="legend-chip legend-chip--alarm"></i>警报区</span>
+              <span><i class="legend-chip legend-chip--robot"></i>小龙虾位置</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="sidebar">
+      <section class="sidebar-card panel sidebar-card--hero">
+        <div class="sidebar-head">
+          <div>
+            <p class="eyebrow">现场控制台</p>
+            <h2>右侧栏状态台</h2>
+          </div>
+          <div class="sidebar-head__meta">
+            <span class="sync-badge sync-badge--offline" id="syncBadge">离线</span>
+            <span class="clock" id="clock">--:--:-- 北京时间</span>
+          </div>
+        </div>
+
+        <div class="mission-card">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">当前状态</p>
+              <h2 id="zoneName">未连接</h2>
+            </div>
+          </div>
+          <p class="mission-card__task" id="taskName">等待后台状态</p>
+          <p class="mission-card__summary" id="taskSummary">
+            后台返回当前分区和坐标后，主视图会先经过分区总览，再切到对应房间，并把小龙虾落到室内真实位置。
+          </p>
+        </div>
+      </section>
+
+      <section class="sidebar-card panel telemetry-card">
+        <div class="card-heading">
+          <div>
+            <p class="eyebrow">遥测数据</p>
+            <h2>机器人读数</h2>
+          </div>
+        </div>
+        <dl class="metric-grid">
+          <div class="metric-box">
+            <dt>模式</dt>
+            <dd id="modeValue">离线</dd>
+          </div>
+          <div class="metric-box">
+            <dt>告警</dt>
+            <dd id="alertValue" data-alert="OFFLINE">离线</dd>
+          </div>
+          <div class="metric-box">
+            <dt>负载</dt>
+            <dd id="loadValue">--</dd>
+          </div>
+          <div class="metric-box">
+            <dt>电量</dt>
+            <dd id="batteryValue">--</dd>
+          </div>
+          <div class="metric-box">
+            <dt>温度</dt>
+            <dd id="temperatureValue">--</dd>
+          </div>
+          <div class="metric-box">
+            <dt>任务数</dt>
+            <dd id="queueValue">--</dd>
+          </div>
+          <div class="metric-box">
+            <dt>坐标</dt>
+            <dd id="coordValue">--, --</dd>
+          </div>
+          <div class="metric-box">
+            <dt>最近同步</dt>
+            <dd id="lastSeenValue">--</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="sidebar-card panel ops-card">
+        <div class="ops-card__block ops-card__block--status">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">接口状态</p>
+              <h2>后端连接</h2>
+            </div>
+          </div>
+          <div class="interface-status" id="interfaceStatus" data-state="offline">
+            <span class="interface-status__dot"></span>
+            <strong id="interfaceStatusValue">未连接</strong>
+          </div>
+        </div>
+
+        <div class="ops-card__block ops-card__block--logs">
+          <div class="ops-card__subhead">
+            <p class="eyebrow">现场日志</p>
+          </div>
+          <ol class="feed-list" id="feedList" aria-live="polite"></ol>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script src="./vendor/phaser.min.js"></script>
+  <script src="./phaser-map.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

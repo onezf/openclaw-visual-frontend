@@ -1,0 +1,30 @@
+{
+  "code": 0,
+  "message": "ok",
+  "data": {
+    "projectId": "proj_001",
+    "projectName": "OpenClaw任务中心",
+    "taskCount": {
+      "total": 2,
+      "todo": 1,
+      "doing": 1,
+      "blocked": 0,
+      "done": 0
+    },
+    "taskList": [
+      {
+        "taskId": "task_1001",
+        "title": "接入任务列表API",
+        "status": "doing",
+        "priority": "high",
+        "assignee": "Tim",
+        "progress": 60,
+        "dueAt": "2026-03-10T18:00:00+08:00",
+        "updatedAt": "2026-03-07T18:00:00+08:00"
+      }
+    ],
+    "page": 1,
+    "pageSize": 20,
+    "total": 2
+  }
+}
